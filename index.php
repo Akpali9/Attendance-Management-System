@@ -1,20 +1,22 @@
 <?php
 session_start();
-$host = "localhost";
-$dbname = 'attendance_system';
-$username = "root";  
-$password = "";      
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
-    // Set error reporting
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die("Database connection failed: " . $e->getMessage());
+// Database configuration
+$servername = "localhost";
+$username = "root";
+$password = "";
+$dbname = "attendance_system";
+
+// Create connection
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+// Check connection
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
 }
 
 // Create tables if they don't exist
-$stmt = "CREATE TABLE IF NOT EXISTS admins (
+$sql = "CREATE TABLE IF NOT EXISTS admins (
     id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(30) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
@@ -22,16 +24,16 @@ $stmt = "CREATE TABLE IF NOT EXISTS admins (
     role ENUM('superadmin', 'admin') DEFAULT 'admin',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )";
-$pdo->prepare($stmt);
+$conn->query($sql);
 
-$stmt = "CREATE TABLE IF NOT EXISTS class_groups (
+$sql = "CREATE TABLE IF NOT EXISTS class_groups (
     id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     group_name VARCHAR(50) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )";
-$pdo->prepare($stmt);
+$conn->query($sql);
 
-$stmt = "CREATE TABLE IF NOT EXISTS members (
+$sql = "CREATE TABLE IF NOT EXISTS members (
     id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     fullname VARCHAR(50) NOT NULL,
     email VARCHAR(50),
@@ -40,9 +42,9 @@ $stmt = "CREATE TABLE IF NOT EXISTS members (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (class_group_id) REFERENCES class_groups(id)
 )";
-$pdo->prepare($stmt);
+$conn->query($sql);
 
-$stmt = "CREATE TABLE IF NOT EXISTS attendance (
+$sql = "CREATE TABLE IF NOT EXISTS attendance (
     id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     member_id INT(6) UNSIGNED NOT NULL,
     admin_id INT(6) UNSIGNED NOT NULL,
@@ -51,31 +53,31 @@ $stmt = "CREATE TABLE IF NOT EXISTS attendance (
     FOREIGN KEY (member_id) REFERENCES members(id),
     FOREIGN KEY (admin_id) REFERENCES admins(id)
 )";
-$pdo->prepare($stmt);
+$conn->query($sql);
 
 // Insert default groups if none exist
-$result = $pdo->prepare("SELECT COUNT(*) as count FROM class_groups");
+$result = $conn->query("SELECT COUNT(*) as count FROM class_groups");
 $row = $result->fetch_assoc();
 if ($row['count'] == 0) {
-    $groups = ['Class A', 'Class B', 'Class C', 'Class D'];
+    $groups = ['Video Production Department','Content Creation Department', 'Sound Engineering Department', 'Facility Maintenance Department', 'Resource production Department', 'Word Bank Department', 'Loveway Choir Department', 'Loveway Minstrels Department', 'LAM Theatre (Stage drama & motion picture)', 'Full House (spoken word & hip-hop', 'LAM Dance Department', 'Super Infants Department (3months - 1year)', 'Super Toddlers Department (2years - 3years)', 'Super Kids 2 Department (6years - 7years)','Super Kids 3 Department (8years - 10years)', 'Teens Church (14years - 16years)', 'Pre-Teens Department (11years - 13years)', 'Ushering Department', 'Greeters Department', 'Pastoral Aides Department', 'Protocols Department (Crowd Control Unit)', 'Altar Keepers Department', 'Sanctuary Keepers Department', 'Exterior Keepers Department', 'Church Admin Department', 'Ministry Information Department', 'Service Coordination Department', 'Brand Management Department', 'Royal Host Department', 'Real Friends Department', 'PCD Admin Department', 'Cell Minstry Department', 'Maturity OPerations Department', 'Community Outreach Department', 'Diplomatic Outreach Department', 'Healing Hands Medical Department', 'Sports & Fitness Department','Super Kids 1 Department (4years-5years)', 'Graphics, Animation & Projection Department', 'Livestreaming Department', 'Photography Department'];
     foreach ($groups as $group) {
-        $pdo->prepare("INSERT INTO class_groups (group_name) VALUES ('$group')");
+        $conn->query("INSERT INTO class_groups (group_name) VALUES ('$group')");
     }
 }
 
 // Insert default superadmin if none exists
-$result = $pdo->prepare("SELECT COUNT(*) as count FROM admins");
+$result = $conn->query("SELECT COUNT(*) as count FROM admins");
 $row = $result->fetch_assoc();
 if ($row['count'] == 0) {
     $hashed_password = password_hash('admin123', PASSWORD_DEFAULT);
-    $pdo->prepare("INSERT INTO admins (username, password, fullname, role) 
-                 VALUES ('superadmin', '$hashed_password', 'Super Admin', 'superadmin')");
+    $conn->query("INSERT INTO admins (username, password, fullname, role) 
+                 VALUES ('superadmin', '$hashed_password', 'Admin', 'superadmin')");
 }
 
 // Authentication functions
 function login($username, $password) {
-    global $pdo;
-    $stmt = $pdo->prepare("SELECT id, username, password, fullname, role FROM admins WHERE username = ?");
+    global $conn;
+    $stmt = $conn->prepare("SELECT id, username, password, fullname, role FROM admins WHERE username = ?");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -128,20 +130,20 @@ if (isset($_GET['action'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_member'])) {
-        $fullname = $pdo->real_escape_string($_POST['fullname']);
-        $email = $pdo->real_escape_string($_POST['email']);
-        $phone = $pdo->real_escape_string($_POST['phone']);
+        $fullname = $conn->real_escape_string($_POST['fullname']);
+        $email = $conn->real_escape_string($_POST['email']);
+        $phone = $conn->real_escape_string($_POST['phone']);
         $class_group_id = intval($_POST['class_group_id']);
         
-        $stmt = "INSERT INTO members (fullname, email, phone, class_group_id) 
+        $sql = "INSERT INTO members (fullname, email, phone, class_group_id) 
                 VALUES ('$fullname', '$email', '$phone', $class_group_id)";
-        $pdo->prepare($stmt);
+        $conn->query($sql);
     }
     
     if (isset($_POST['delete_member'])) {
         $member_id = intval($_POST['member_id']);
-        $stmt = "DELETE FROM members WHERE id = $member_id";
-        $pdo->prepare($stmt);
+        $sql = "DELETE FROM members WHERE id = $member_id";
+        $conn->query($sql);
     }
     
     if (isset($_POST['mark_attendance'])) {
@@ -150,21 +152,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $date = date('Y-m-d');
         $time = date('H:i:s');
         
-        $stmt = "INSERT INTO attendance (member_id, admin_id, attendance_date, attendance_time) 
+        $sql = "INSERT INTO attendance (member_id, admin_id, attendance_date, attendance_time) 
                 VALUES ($member_id, $admin_id, '$date', '$time')";
-        $pdo->prepare($stmt);
+        $conn->query($sql);
     }
     
     if (isset($_POST['add_admin'])) {
         if (is_superadmin()) {
-            $username = $pdo->real_escape_string($_POST['username']);
-            $fullname = $pdo->real_escape_string($_POST['fullname']);
-            $password = $pdo->real_escape_string($_POST['password']);
+            $username = $conn->real_escape_string($_POST['username']);
+            $fullname = $conn->real_escape_string($_POST['fullname']);
+            $password = $conn->real_escape_string($_POST['password']);
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
             
-            $stmt = "INSERT INTO admins (username, password, fullname) 
+            $sql = "INSERT INTO admins (username, password, fullname) 
                     VALUES ('$username', '$hashed_password', '$fullname')";
-            $pdo->prepare($stmt);
+            $conn->query($sql);
         }
     }
     
@@ -173,34 +175,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $admin_id = intval($_POST['admin_id']);
             // Prevent superadmin from deleting themselves
             if ($admin_id != $_SESSION['admin_id']) {
-                $stmt = "DELETE FROM admins WHERE id = $admin_id";
-                $pdo->prepare($stmt);
+                $sql = "DELETE FROM admins WHERE id = $admin_id";
+                $conn->query($sql);
             }
         }
     }
     
     if (isset($_POST['add_group'])) {
-        $group_name = $pdo->real_escape_string($_POST['group_name']);
-        $stmt = "INSERT INTO class_groups (group_name) VALUES ('$group_name')";
-        $pdo->prepare($stmt);
+        $group_name = $conn->real_escape_string($_POST['group_name']);
+        $sql = "INSERT INTO class_groups (group_name) VALUES ('$group_name')";
+        $conn->query($sql);
     }
     
     if (isset($_POST['delete_group'])) {
         $group_id = intval($_POST['group_id']);
         // Move members to default group before deletion
-        $default_group = $pdo->prepare("SELECT id FROM class_groups ORDER BY id LIMIT 1")->fetch_assoc();
+        $default_group = $conn->query("SELECT id FROM class_groups ORDER BY id LIMIT 1")->fetch_assoc();
         if ($default_group) {
             $default_id = $default_group['id'];
-            $pdo->prepare("UPDATE members SET class_group_id = $default_id WHERE class_group_id = $group_id");
+            $conn->query("UPDATE members SET class_group_id = $default_id WHERE class_group_id = $group_id");
         }
-        $stmt = "DELETE FROM class_groups WHERE id = $group_id";
-        $pdo->prepare($stmt);
+        $sql = "DELETE FROM class_groups WHERE id = $group_id";
+        $conn->query($sql);
     }
 }
 
 // Get class groups
 $groups = [];
-$result = $pdo->prepare("SELECT g.*, 
+$result = $conn->query("SELECT g.*, 
                         (SELECT COUNT(*) FROM members m WHERE m.class_group_id = g.id) AS member_count 
                         FROM class_groups g ORDER BY group_name");
 if ($result->num_rows > 0) {
@@ -211,7 +213,7 @@ if ($result->num_rows > 0) {
 
 // Get members with group info
 $members = [];
-$result = $pdo->prepare("SELECT m.*, g.group_name 
+$result = $conn->query("SELECT m.*, g.group_name 
                         FROM members m 
                         JOIN class_groups g ON m.class_group_id = g.id 
                         ORDER BY g.group_name, m.fullname");
@@ -224,7 +226,7 @@ if ($result->num_rows > 0) {
 // Get admins
 $admins = [];
 if (is_superadmin()) {
-    $result = $pdo->prepare("SELECT * FROM admins ORDER BY role DESC, fullname");
+    $result = $conn->query("SELECT * FROM admins ORDER BY role DESC, fullname");
     if ($result->num_rows > 0) {
         while($row = $result->fetch_assoc()) {
             $admins[] = $row;
@@ -234,7 +236,7 @@ if (is_superadmin()) {
 
 // Get attendance records
 $attendance = [];
-$result = $pdo->prepare("SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name 
+$result = $conn->query("SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name 
                         FROM attendance a
                         JOIN members m ON a.member_id = m.id
                         JOIN class_groups g ON m.class_group_id = g.id
@@ -248,7 +250,7 @@ if ($result->num_rows > 0) {
 
 // Get attendance records for public view
 $public_attendance = [];
-$result = $pdo->prepare("SELECT m.fullname AS member_name, g.group_name,
+$result = $conn->query("SELECT m.fullname AS member_name, g.group_name,
                         DATE_FORMAT(a.attendance_date, '%M %d, %Y') AS formatted_date, 
                         DATE_FORMAT(a.attendance_time, '%h:%i %p') AS formatted_time
                         FROM attendance a
@@ -278,10 +280,10 @@ foreach ($attendance as $record) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Attendance Management System</title>
+    <title>Love Ambassador Attendance</title>
+    <link rel="icon" href="./img/lam-logo.jpg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-      <link rel="stylesheet" href="Style.css">
-
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <?php 
@@ -296,11 +298,12 @@ foreach ($attendance as $record) {
     ?>
         <div class="public-container">
             <div class="public-header">
+                
                 <div class="container">
                     <div class="public-logo">
-                        <i class="fas fa-calendar-check"></i> Attendance Tracker
+                        Workers Attendance
                     </div>
-                    <p>View real-time attendance records of all members</p>
+                    <p>Attendance records of all Church Workers</p>
                 </div>
             </div>
             
@@ -320,7 +323,7 @@ foreach ($attendance as $record) {
                     </div>
                     <div class="public-stat">
                         <div class="public-stat-value"><?php echo $total_groups; ?></div>
-                        <div class="public-stat-label">Class Groups</div>
+                        <div class="public-stat-label">Departments</div>
                     </div>
                 </div>
                 
@@ -388,7 +391,7 @@ foreach ($attendance as $record) {
             </div>
             
             <div class="footer">
-                <p>Attendance Management System &copy; <?php echo date('Y'); ?> | All rights reserved</p>
+                <p>Love Ambassador Ministry &copy; <?php echo date('Y'); ?> | All rights reserved</p>
             </div>
         </div>
     <?php
@@ -417,7 +420,6 @@ foreach ($attendance as $record) {
                     <button type="submit" class="btn" style="width:100%;">Login</button>
                     
                     <div style="text-align:center; margin-top:15px;">
-                        <p>Default superadmin: superadmin / admin123</p>
                         <p style="margin-top: 10px;">
                             <a href="?page=public" class="btn btn-outline" style="margin-top: 10px;">
                                 <i class="fas fa-eye"></i> View Public Attendance
@@ -434,24 +436,24 @@ foreach ($attendance as $record) {
     ?>
         <div class="header">
             <div class="container header-content">
-                <div class="logo">
-                    <i class="fas fa-calendar-check"></i> AttendancePro
+                <div class="logo"style=" margin-right: 20px;">
+                    <img src="./img/logo.png" style="height: inherit; width: 50px; margin-left: 20px;">
                 </div>
                 
-                <div class="nav">
-                    <a href="index.php" class="active">Dashboard</a>
+                <div class="nav"style=" padding-right: 20px;">
+                    <a href="index.php" class="active">Home</a>
                     <a href="#members">Members</a>
                     <a href="#attendance">Attendance</a>
-                    <a href="#groups">Groups</a>
+                    <a href="#groups">Departments</a>
                     <a href="#admins">Admins</a>
                 </div>
                 
                 <div class="auth-info">
-                    <div class="user-info">
+                    <div class="user-info"style=" margin-right: 3px;">
                         <div class="avatar"><?php echo substr($_SESSION['fullname'], 0, 1); ?></div>
                         <span><?php echo $_SESSION['fullname']; ?>
                             <?php if (is_superadmin()): ?>
-                                <span class="superadmin-badge">Super Admin</span>
+                                <span class="superadmin-badge">Admin</span>
                             <?php endif; ?>
                         </span>
                     </div>
@@ -484,7 +486,7 @@ foreach ($attendance as $record) {
                 
                 <div class="stat-card">
                     <div class="stat-value"><?php echo $total_groups; ?></div>
-                    <div class="stat-label">Class Groups</div>
+                    <div class="stat-label">Departments</div>
                 </div>
             </div>
             
@@ -496,9 +498,9 @@ foreach ($attendance as $record) {
                     <div class="card-body">
                         <form method="POST">
                             <div class="form-group">
-                                <label for="member_id">Select Member</label>
+                                <label for="member_id">Select Worker's Name</label>
                                 <select class="form-control" name="member_id" id="member_id" required>
-                                    <option value="">-- Select Member --</option>
+                                    <option value="">-- Select Worker --</option>
                                     <?php foreach ($members as $member): ?>
                                         <option value="<?php echo $member['id']; ?>">
                                             <?php echo $member['fullname']; ?> (<?php echo $member['group_name']; ?>)
@@ -515,7 +517,7 @@ foreach ($attendance as $record) {
                 
                 <div class="card">
                     <div class="card-header">
-                        <span>Add New Member</span>
+                        <span>Add New Worker</span>
                     </div>
                     <div class="card-body">
                         <form method="POST">
@@ -535,9 +537,9 @@ foreach ($attendance as $record) {
                             </div>
                             
                             <div class="form-group">
-                                <label for="class_group_id">Class Group</label>
+                                <label for="class_group_id">Department</label>
                                 <select class="form-control" name="class_group_id" id="class_group_id" required>
-                                    <option value="">-- Select Group --</option>
+                                    <option value="">-- Select Department --</option>
                                     <?php foreach ($groups as $group): ?>
                                         <option value="<?php echo $group['id']; ?>"><?php echo $group['group_name']; ?></option>
                                     <?php endforeach; ?>
@@ -545,7 +547,7 @@ foreach ($attendance as $record) {
                             </div>
                             
                             <button type="submit" name="add_member" class="btn">
-                                <i class="fas fa-user-plus"></i> Add Member
+                                <i class="fas fa-user-plus"></i> Add Church Worker
                             </button>
                         </form>
                     </div>
@@ -562,8 +564,8 @@ foreach ($attendance as $record) {
                             <tr>
                                 <th>Date</th>
                                 <th>Time</th>
-                                <th>Member</th>
-                                <th>Group</th>
+                                <th>Worker</th>
+                                <th>Department</th>
                                 <th>Marked By</th>
                             </tr>
                         </thead>
@@ -589,7 +591,7 @@ foreach ($attendance as $record) {
             
             <div class="card" id="members">
                 <div class="card-header">
-                    <span>Member List</span>
+                    <span>Worker's List</span>
                 </div>
                 <div class="card-body">
                     <table>
@@ -597,7 +599,7 @@ foreach ($attendance as $record) {
                             <tr>
                                 <th>ID</th>
                                 <th>Full Name</th>
-                                <th>Group</th>
+                                <th>Department</th>
                                 <th>Email</th>
                                 <th>Phone</th>
                                 <th>Actions</th>
@@ -620,6 +622,9 @@ foreach ($attendance as $record) {
                                         </form>
                                     </td>
                                 </tr>
+                                <script>
+                                  
+                                </script>
                             <?php endforeach; ?>
                             <?php if (empty($members)): ?>
                                 <tr>
@@ -633,22 +638,22 @@ foreach ($attendance as $record) {
             
             <div class="card" id="groups">
                 <div class="card-header">
-                    <span>Class Groups</span>
+                    <span>Departments</span>
                 </div>
                 <div class="card-body">
                     <div class="grid">
                         <div class="card">
                             <div class="card-header">
-                                <span>Add New Group</span>
+                                <span>Add Department</span>
                             </div>
                             <div class="card-body">
                                 <form method="POST">
                                     <div class="form-group">
-                                        <label for="group_name">Group Name</label>
+                                        <label for="group_name">Departmental Name</label>
                                         <input type="text" class="form-control" name="group_name" id="group_name" required>
                                     </div>
                                     <button type="submit" name="add_group" class="btn">
-                                        <i class="fas fa-plus-circle"></i> Add Group
+                                        <i class="fas fa-plus-circle"></i> Add Department
                                     </button>
                                 </form>
                             </div>
@@ -656,7 +661,7 @@ foreach ($attendance as $record) {
                         
                         <div class="card">
                             <div class="card-header">
-                                <span>Group Statistics</span>
+                                <span>Departmental Statistics</span>
                             </div>
                             <div class="card-body">
                                 <div class="group-list">
@@ -672,7 +677,7 @@ foreach ($attendance as $record) {
                                             <input type="hidden" name="group_id" value="<?php echo $group['id']; ?>">
                                             <?php if ($group['member_count'] == 0): ?>
                                                 <button type="submit" name="delete_group" class="btn btn-danger" style="width: 100%;">
-                                                    <i class="fas fa-trash-alt"></i> Delete Group
+                                                    <i class="fas fa-trash-alt"></i> Delete Department
                                                 </button>
                                             <?php else: ?>
                                                 <button type="button" class="btn" style="width: 100%; background: #ddd; cursor: not-allowed;" disabled>
@@ -764,7 +769,7 @@ foreach ($attendance as $record) {
             <?php endif; ?>
             
             <div class="footer">
-                <p>Attendance Management System &copy; <?php echo date('Y'); ?> | Developed by Akpali Francis </p>
+<p>Love Ambassador Ministry &copy; <?php echo date('Y'); ?> | All rights reserved</p>
                 <p style="margin-top: 10px;">
                     <a href="?page=public" class="btn btn-outline">
                         <i class="fas fa-eye"></i> View Public Attendance
@@ -775,4 +780,3 @@ foreach ($attendance as $record) {
     <?php } ?>
 </body>
 </html>
-
