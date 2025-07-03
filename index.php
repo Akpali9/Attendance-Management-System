@@ -72,10 +72,10 @@ $result = $conn->query("SELECT COUNT(*) as count FROM admins");
 $row = $result->fetch_assoc();
 if ($row['count'] == 0) {
     $hashed_password = password_hash('admin123', PASSWORD_DEFAULT);
+    // CHANGE 'admin' TO 'superadmin' IN THIS LINE:
     $conn->query("INSERT INTO admins (username, password, fullname, role) 
-                 VALUES ('superadmin', '$hashed_password', 'Super Admin', 'superadmin')");
+                 VALUES ('superadmin', '$hashed_password', 'Admin', 'superadmin')");
 }
-
 // Authentication functions
 function login($username, $password) {
     global $conn;
@@ -87,16 +87,16 @@ function login($username, $password) {
     if ($result->num_rows === 1) {
         $admin = $result->fetch_assoc();
         if (password_verify($password, $admin['password'])) {
+            // MAKE SURE ROLE IS SET CORRECTLY
             $_SESSION['admin_id'] = $admin['id'];
             $_SESSION['username'] = $admin['username'];
             $_SESSION['fullname'] = $admin['fullname'];
-            $_SESSION['role'] = $admin['role'];
+            $_SESSION['role'] = $admin['role']; // This must be 'superadmin' for the first user
             return true;
         }
     }
     return false;
 }
-
 function is_logged_in() {
     return isset($_SESSION['admin_id']);
 }
@@ -176,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
+   
     if (isset($_POST['add_admin'])) {
         if (is_superadmin()) {
             $username = $conn->real_escape_string($_POST['username']);
@@ -192,12 +193,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['delete_admin'])) {
         if (is_superadmin()) {
             $admin_id = intval($_POST['admin_id']);
+            // Prevent superadmin from deleting themselves
             if ($admin_id != $_SESSION['admin_id']) {
                 $sql = "DELETE FROM admins WHERE id = $admin_id";
                 $conn->query($sql);
             }
         }
     }
+    
     
     if (isset($_POST['add_group'])) {
         $group_name = $conn->real_escape_string($_POST['group_name']);
@@ -244,10 +247,15 @@ if ($result->num_rows > 0) {
 $admins = [];
 if (is_superadmin()) {
     $result = $conn->query("SELECT * FROM admins ORDER BY role DESC, fullname");
-    if ($result->num_rows > 0) {
-        while($row = $result->fetch_assoc()) {
-            $admins[] = $row;
+    if ($result) {
+        if ($result->num_rows > 0) {
+            while($row = $result->fetch_assoc()) {
+                $admins[] = $row;
+            }
         }
+    } else {
+        // Add error logging
+        error_log("Admin query failed: " . $conn->error);
     }
 }
 
@@ -306,10 +314,10 @@ if ($result->num_rows > 0) {
 // Generate CSV content for export
 if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename=attendance_report_' . date('Y-m-d') . '.csv');
+    header('Content-Disposition: attachment; filename=Workers_Attendance_Report_' . date('Y-m-d') . '.csv');
     
     $output = fopen('php://output', 'w');
-    fputcsv($output, array('Date', 'Member Name', 'Group', 'Time', 'Marked By'));
+    fputcsv($output, array('Date', 'Name', 'Department', 'Time','Marked-By'));
     
     $result = $conn->query("SELECT a.attendance_date, m.fullname AS member_name, g.group_name, 
                             a.attendance_time, ad.fullname AS admin_name 
@@ -354,7 +362,7 @@ if (isset($_POST['theme_toggle'])) {
             --secondary: #4cc9f0;
             --success: #2ec4b6;
             --warning: #f72585;
-            --light: #f8f9fa;
+            --light: white;
             --dark: #212529;
             --gray: #6c757d;
             --light-gray: #e9ecef;
@@ -551,6 +559,9 @@ if (isset($_POST['theme_toggle'])) {
         .card-body {
             padding: 20px;
         }
+        .card-body-list {
+            padding: 20px;
+        }
 
         .grid {
             display: grid;
@@ -742,6 +753,7 @@ if (isset($_POST['theme_toggle'])) {
             padding: 80px 0 40px;
             text-align: center;
             margin-bottom: 40px;
+            background-size: cover;
         }
 
         .public-logo {
@@ -807,6 +819,14 @@ if (isset($_POST['theme_toggle'])) {
 
         .attendance-record:last-child {
             border-bottom: none;
+        }
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; 
+            background: url(./img/excel.jpg);
+            background-size: cover;
         }
 
         .attendance-avatar {
@@ -1103,7 +1123,10 @@ if (isset($_POST['theme_toggle'])) {
                 flex-direction: column;
                 gap: 15px;
             }
-            
+            .head{
+                font-size: 13px;
+                width: 90%;
+            }
             .nav {
                 flex-wrap: wrap;
                 justify-content: center;
@@ -1120,6 +1143,9 @@ if (isset($_POST['theme_toggle'])) {
             .group-list {
                 flex-direction: column;
             }
+           .card-body-list{
+            overflow-x: scroll;
+        }    
         }
     </style>
     <script>
@@ -1314,11 +1340,11 @@ if (isset($_POST['theme_toggle'])) {
                 </div>
                 
                 <div class="nav">
-                    <a href="index.php" class="active">Dashboard</a>
-                    <a href="#members">Members</a>
-                    <a href="#attendance">Attendance</a>
-                    <a href="#groups">Department</a>
-                    <a href="#admins">Admins</a>
+                    <a href="#dashboard" class="nav-link">Dashboard</a>
+                    <a href="#members"class="nav-link">Members</a>
+                    <a href="#attendance"class="nav-link">Attendance</a>
+                    <a href="#department" class="nav-link">Department</a>
+                    <a href="#admins"class="nav-link">Admins</a>
                 </div>
                 
                 <div class="auth-info">
@@ -1343,9 +1369,9 @@ if (isset($_POST['theme_toggle'])) {
         
         <div class="container">
             <div style="margin: 20px 0; display: flex; justify-content: space-between; align-items: center;">
-                <div>
+                <div id="dashboard">
                     <h1>Dashboard</h1>
-                    <p>Welcome back, <?php echo $_SESSION['fullname']; ?>! Here's your system overview.</p>
+                    <p class="head">Welcome back, <?php echo $_SESSION['fullname']; ?>! Here's your system overview.</p>
                 </div>
                 <a href="?export=csv" class="export-btn" style="text-decoration:none;">
                     <i class="fas fa-download"></i> Export Attendance
@@ -1522,7 +1548,7 @@ if (isset($_POST['theme_toggle'])) {
                 <div class="card-header">
                     <span>Recent Attendance Records</span>
                 </div>
-                <div class="card-body">
+                <div class="card-body-list">
                     <table>
                         <thead>
                             <tr>
@@ -1559,7 +1585,7 @@ if (isset($_POST['theme_toggle'])) {
                 <div class="card-header">
                     <span>Worker's List</span>
                 </div>
-                <div class="card-body">
+                <div class=" card-body-list">
                     <table>
                         <thead>
                             <tr>
@@ -1600,18 +1626,78 @@ if (isset($_POST['theme_toggle'])) {
                     </table>
                 </div>
             </div>
-            
-            <?php if (is_superadmin()): ?>
-            <div class="card" id="admins">
+                <div class="card" id="groups">
+                <div class="card-header">
+                    <span>Departments</span>
+                </div>
+                <div class="card-body">
+                    
+                        <div class="card">
+                            <div class="card-header">
+                                <span>Add New Department</span>
+                            </div>
+                            <div class="card-body">
+                                <form method="POST">
+                                    <div class="form-group">
+                                        <label for="group_name">Departmental Name</label>
+                                        <input type="text" class="form-control" name="group_name" id="group_name" required>
+                                    </div>
+                                    <button type="submit" name="add_group" class="btn">
+                                        <i class="fas fa-plus-circle"></i> Add Department
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <!-- <div class="card">
+                            <div class="card-header" id="department">
+                                <span>Departmental Statistics</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="group-list">
+                                    <?php foreach ($groups as $group): 
+                                        $group_class = strtolower(substr($group['group_name'], -1));
+                                    ?>
+                                    <div class="group-card <?php echo $group_class; ?>">
+                                        <div class="group-name">
+                                            <i class="fas fa-users"></i> <?php echo $group['group_name']; ?>
+                                        </div>
+                                            <div class="group-members-count">
+                                            <?php echo $group['member_count']; ?> members
+                                        </div>
+                                        <form method="POST" style="margin-top: 15px;">
+                                            <input type="hidden" name="group_id" value="<?php echo $group['id']; ?>">
+                                            <?php if ($group['member_count'] == 0): ?>
+                                                <button type="submit" name="delete_group" class="btn btn-danger" style="width: 100%;">
+                                                    <i class="fas fa-trash-alt"></i> Delete Group
+                                                </button>
+                                            <?php else: ?>
+                                                <button type="button" class="btn" style="width: 100%; background: #ddd; cursor: not-allowed;" disabled>
+                                                    Group has members
+                                                </button>
+                                            <?php endif; ?>
+                                        </form>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div> -->
+                    
+                </div>
+            </div>
+             <div class="card" id="members">
                 <div class="card-header">
                     <span>Administrator Management</span>
                     <span class="superadmin-badge">Super Admin Only</span>
                 </div>
-                <div class="card-body">
-                    <h3>Add New Admin</h3>
-                    <form method="POST" style="margin-bottom: 30px;">
-                        <div class="grid">
-                            <div class="form-group">
+                  <div class="card-body">
+                        <div class="card" >
+                            <div class="card-header">
+                                <span>Add New Admin</span>
+                            </div>
+                            <div class="card-body">
+                                <form method="POST">
+                                        <div class="form-group">
                                 <label for="username">Username</label>
                                 <input type="text" class="form-control" name="username" id="username" required>
                             </div>
@@ -1625,56 +1711,68 @@ if (isset($_POST['theme_toggle'])) {
                                 <label for="password">Password</label>
                                 <input type="password" class="form-control" name="password" id="password" required>
                             </div>
-                        </div>
-                        <button type="submit" name="add_admin" class="btn btn-success">
+                        <button type="submit" name="add_admin" class="btn btn-superadmin">
                             <i class="fas fa-user-shield"></i> Add Administrator
                         </button>
-                    </form>
-                    
-                    <h3>Admin List</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Username</th>
-                                <th>Full Name</th>
-                                <th>Role</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($admins as $admin): ?>
-                                <tr>
-                                    <td><?php echo $admin['id']; ?></td>
-                                    <td><?php echo $admin['username']; ?></td>
-                                    <td><?php echo $admin['fullname']; ?></td>
-                                    <td>
-                                        <?php if ($admin['role'] === 'superadmin'): ?>
-                                            <span class="superadmin-badge">Super Admin</span>
-                                        <?php else: ?>
-                                            Admin
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php if ($admin['id'] != $_SESSION['admin_id']): ?>
-                                            <form method="POST" style="display:inline;">
-                                                <input type="hidden" name="admin_id" value="<?php echo $admin['id']; ?>">
-                                                <button type="submit" name="delete_admin" class="action-btn btn-danger">
-                                                    <i class="fas fa-trash-alt"></i> Delete
-                                                </button>
-                                            </form>
-                                        <?php else: ?>
-                                            <span>Current User</span>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="card" style="margin-top:30px;">
+                            <div class="card-header" id="admins">
+                             <h3>Admin List</h3>
+                            </div>
+                        <div class="card-body-list">
+                         
+                  <table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Full Name</th>
+            <th>Role</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($admins as $admin): ?>
+    <tr>
+        <td><?php echo $admin['id']; ?></td>
+        <td><?php echo $admin['username']; ?></td>
+        <td><?php echo $admin['fullname']; ?></td>
+        <td>
+            <?php if ($admin['role'] === 'superadmin'): ?>
+                <span class="superadmin-badge">Super Admin</span>
+            <?php else: ?>
+                Admin
+            <?php endif; ?>
+        </td>
+        <td>
+            <?php if ($admin['id'] != $_SESSION['admin_id']): ?>
+                <form method="POST" style="display:inline;">
+                    <input type="hidden" name="admin_id" value="<?php echo $admin['id']; ?>">
+                    <button type="submit" name="delete_admin" class="action-btn btn-danger">
+                        <i class="fas fa-trash-alt"></i> Delete
+                    </button>
+                </form>
+            <?php else: ?>
+                <span>Current User</span>
+            <?php endif; ?>
+        </td>
+    </tr>
+<?php endforeach; ?>
+    </tbody>
+</table>                               
                 </div>
             </div>
-            <?php endif; ?>
-            
+    
+              
+                     
+                    </div>
+                </div>
+     </div>
+          
+
             <div class="footer">
               <p>Love Ambassador Ministry &copy; <?php echo date('Y'); ?> | All rights reserved</p>
 
