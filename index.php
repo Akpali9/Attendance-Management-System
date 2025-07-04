@@ -310,6 +310,52 @@ if ($result->num_rows > 0) {
     }
 }
 
+// Handle worker attendance report
+$worker_attendance = [];
+$worker_info = [];
+if (isset($_GET['view_worker_attendance']) && isset($_GET['worker_id'])) {
+    $worker_id = intval($_GET['worker_id']);
+    $start_date = isset($_GET['start_date']) ? $conn->real_escape_string($_GET['start_date']) : '';
+    $end_date = isset($_GET['end_date']) ? $conn->real_escape_string($_GET['end_date']) : '';
+    
+    // Prepare SQL query with date filtering
+    $worker_attendance_sql = "SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name, 
+                              DATE_FORMAT(a.attendance_date, '%M %d, %Y') AS formatted_date,
+                              DATE_FORMAT(a.attendance_time, '%h:%i %p') AS formatted_time
+                              FROM attendance a
+                              JOIN members m ON a.member_id = m.id
+                              JOIN class_groups g ON m.class_group_id = g.id
+                              JOIN admins ad ON a.admin_id = ad.id
+                              WHERE a.member_id = $worker_id";
+    
+    // Add date filters if provided
+    if (!empty($start_date)) {
+        $worker_attendance_sql .= " AND a.attendance_date >= '$start_date'";
+    }
+    if (!empty($end_date)) {
+        $worker_attendance_sql .= " AND a.attendance_date <= '$end_date'";
+    }
+    
+    $worker_attendance_sql .= " ORDER BY a.attendance_date DESC, a.attendance_time DESC";
+    
+    // Execute query
+    $result = $conn->query($worker_attendance_sql);
+    if ($result->num_rows > 0) {
+        while($row = $result->fetch_assoc()) {
+            $worker_attendance[] = $row;
+        }
+    }
+    
+    // Get worker info
+    $worker_result = $conn->query("SELECT m.*, g.group_name 
+                                  FROM members m 
+                                  JOIN class_groups g ON m.class_group_id = g.id 
+                                  WHERE m.id = $worker_id");
+    if ($worker_result->num_rows > 0) {
+        $worker_info = $worker_result->fetch_assoc();
+    }
+}
+
 // Calculate statistics
 $total_members = count($members);
 $total_groups = count($groups);
@@ -1137,6 +1183,74 @@ if (isset($_POST['theme_toggle'])) {
             background: var(--group-management);
         }
 
+        /* Worker Attendance Report Styles */
+        .report-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--light-gray);
+        }
+
+        .worker-avatar-lg {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 2rem;
+        }
+
+        .worker-info {
+            flex: 1;
+        }
+
+        .report-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .report-stat {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            text-align: center;
+            border: 1px solid var(--light-gray);
+        }
+
+        .report-stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 5px 0;
+            color: var(--primary);
+        }
+
+        .report-stat-label {
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+
+        .date-range-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .date-input-group {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 200px;
+        }
+
         @media (max-width: 768px) {
             .header-content {
                 flex-direction: column;
@@ -1350,6 +1464,191 @@ if (isset($_POST['theme_toggle'])) {
     <?php 
     // Admin dashboard
     } else {
+        // Check if we are viewing a worker's attendance
+        if (isset($_GET['view_worker_attendance'])) {
+            $worker_id = intval($_GET['worker_id']);
+            if (empty($worker_info)) {
+                echo "<script>alert('Worker not found'); window.location.href='index.php';</script>";
+                exit;
+            }
+            $group_class = strtolower(str_replace(' ', '-', $worker_info['group_name']));
+    ?>
+        <div class="header">
+            <div class="container header-content">
+                <div class="logo">
+                       <img src="./img/logo.png" style="height: inherit; width: 50px; margin-left: 20px;">
+
+                </div>
+                
+                <div class="nav">
+    <a href="#dashboard" class="nav-link">Dashboard</a>
+    <a href="#members"class="nav-link">Members</a>
+    <a href="#attendance"class="nav-link">Attendance</a>
+    <?php if (is_superadmin()): ?>
+    <a href="#department" class="nav-link">Department</a>
+        <a href="#admins"class="nav-link">Admins</a>
+    <?php endif; ?>
+</div>
+                
+                <div class="auth-info">
+                    <form method="POST" style="display: inline;">
+                        <input type="hidden" name="theme" value="<?php echo $theme; ?>">
+                        <button type="submit" name="theme_toggle" class="theme-toggle">
+                            <i class="fas fa-<?php echo $theme == 'light' ? 'moon' : 'sun'; ?>"></i>
+                        </button>
+                    </form>
+                    <div class="user-info">
+                        <div class="avatar"><?php echo substr($_SESSION['fullname'], 0, 1); ?></div>
+                        <span><?php echo $_SESSION['fullname']; ?>
+                            <?php if (is_superadmin()): ?>
+                                <span class="superadmin-badge">Admin</span>
+                            <?php endif; ?>
+                        </span>
+                    </div>
+                    <a href="?action=logout" class="btn btn-danger">Logout</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="container">
+            <div style="margin: 20px 0;">
+                <a href="?page=dashboard" class="btn btn-outline">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+            
+            <div class="report-header">
+                <div class="worker-avatar-lg" style="background: var(--group-<?php echo $group_class; ?>);">
+                    <?php echo substr($worker_info['fullname'], 0, 1); ?>
+                </div>
+                <div class="worker-info">
+                    <h1><?php echo $worker_info['fullname']; ?></h1>
+                    <p>
+                        <span class="group-badge" style="background: var(--group-<?php echo $group_class; ?>);">
+                            <?php echo $worker_info['group_name']; ?>
+                        </span>
+                    </p>
+                    <p>
+                        <?php if ($worker_info['email']): ?>
+                            <i class="fas fa-envelope"></i> <?php echo $worker_info['email']; ?>
+                        <?php endif; ?>
+                    </p>
+                    <p>
+                        <?php if ($worker_info['phone']): ?>
+                            <i class="fas fa-phone"></i> <?php echo $worker_info['phone']; ?>
+                        <?php endif; ?>
+                    </p>
+                </div>
+            </div>
+            
+            <div class="report-stats">
+                <div class="report-stat">
+                    <div class="report-stat-value">
+                        <?php 
+                        $total_worker_attendance = $conn->query("SELECT COUNT(*) as count 
+                                                                FROM attendance 
+                                                                WHERE member_id = ".$worker_info['id'])->fetch_assoc()['count'];
+                        echo $total_worker_attendance;
+                        ?>
+                    </div>
+                    <div class="report-stat-label">Total Attendance</div>
+                </div>
+                
+                <div class="report-stat">
+                    <div class="report-stat-value">
+                        <?php 
+                        $current_month_attendance = $conn->query("SELECT COUNT(*) as count 
+                                                         FROM attendance 
+                                                         WHERE member_id = ".$worker_info['id']."
+                                                         AND DATE_FORMAT(attendance_date, '%Y-%m') = '$current_month'")->fetch_assoc()['count'];
+                        echo $current_month_attendance;
+                        ?>
+                    </div>
+                    <div class="report-stat-label">This Month</div>
+                </div>
+                
+                <div class="report-stat">
+                    <div class="report-stat-value">
+                        <?php 
+                        $last_month = date('Y-m', strtotime('first day of last month'));
+                        $last_month_attendance = $conn->query("SELECT COUNT(*) as count 
+                                                      FROM attendance 
+                                                      WHERE member_id = ".$worker_info['id']."
+                                                      AND DATE_FORMAT(attendance_date, '%Y-%m') = '$last_month'")->fetch_assoc()['count'];
+                        echo $last_month_attendance;
+                        ?>
+                    </div>
+                    <div class="report-stat-label">Last Month</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <span>Attendance Records</span>
+                </div>
+                <div class="card-body">
+                    <form method="GET" action="">
+                        <input type="hidden" name="view_worker_attendance" value="1">
+                        <input type="hidden" name="worker_id" value="<?php echo $worker_info['id']; ?>">
+                        
+                        <div class="date-range-selector">
+                            <div class="date-input-group">
+                                <label for="start_date">Start Date</label>
+                                <input type="date" class="form-control" name="start_date" id="start_date" 
+                                       value="<?php echo isset($_GET['start_date']) ? $_GET['start_date'] : ''; ?>">
+                            </div>
+                            
+                            <div class="date-input-group">
+                                <label for="end_date">End Date</label>
+                                <input type="date" class="form-control" name="end_date" id="end_date" 
+                                       value="<?php echo isset($_GET['end_date']) ? $_GET['end_date'] : ''; ?>">
+                            </div>
+                            
+                            <div style="display: flex; align-items: flex-end; gap: 10px;">
+                                <button type="submit" class="btn" style="height: 42px;">
+                                    <i class="fas fa-filter"></i> Apply Filter
+                                </button>
+                                <a href="?view_worker_attendance=1&worker_id=<?php echo $worker_info['id']; ?>" 
+                                   class="btn btn-outline" style="height: 42px;">
+                                    <i class="fas fa-sync"></i> Reset
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    <?php if (!empty($worker_attendance)): ?>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Time</th>
+                                    <th>Department</th>
+                                    <th>Marked By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($worker_attendance as $record): ?>
+                                    <tr>
+                                        <td><?php echo $record['formatted_date']; ?></td>
+                                        <td><?php echo $record['formatted_time']; ?></td>
+                                        <td><?php echo $record['group_name']; ?></td>
+                                        <td><?php echo $record['admin_name']; ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <p>No attendance records found for this worker.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Love Ambassador Ministry &copy; <?php echo date('Y'); ?> | All rights reserved</p>
+        </div>
+    <?php
+        } else {
     ?>
         <div class="header">
             <div class="container header-content">
@@ -1629,6 +1928,10 @@ if (isset($_POST['theme_toggle'])) {
                                     <td><?php echo $member['email'] ? $member['email'] : 'N/A'; ?></td>
                                     <td><?php echo $member['phone'] ? $member['phone'] : 'N/A'; ?></td>
                                     <td>
+                                        <a href="?view_worker_attendance=1&worker_id=<?php echo $member['id']; ?>" 
+                                           class="btn" style="margin-right:5px;">
+                                            <i class="fas fa-calendar-check"></i> View Attendance
+                                        </a>
                                         <form method="POST" style="display:inline;">
                                             <input type="hidden" name="member_id" value="<?php echo $member['id']; ?>">
                                             <button type="submit" name="delete_member" class="action-btn btn-danger">
@@ -1808,6 +2111,9 @@ if (isset($_POST['theme_toggle'])) {
                 </p>
             </div>
         </div>
-    <?php } ?>
+    <?php 
+        }
+    } 
+    ?>
 </body>
 </html>
