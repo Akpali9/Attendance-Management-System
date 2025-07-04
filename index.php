@@ -61,7 +61,7 @@ foreach ($tables as $sql) {
 $result = $conn->query("SELECT COUNT(*) as count FROM class_groups");
 $row = $result->fetch_assoc();
 if ($row['count'] == 0) {
-    $groups = ['Video Production Department','Content Creation Department', 'Sound Engineering Department', 'Facility Maintenance Department', 'Resource production Department', 'Word Bank Department', 'Loveway Choir Department', 'Loveway Minstrels Department', 'LAM Theatre (Stage drama & motion picture)', 'Full House (spoken word & hip-hop', 'LAM Dance Department', 'Super Infants Department (3months - 1year)', 'Super Toddlers Department (2years - 3years)', 'Super Kids 2 Department (6years - 7years)','Super Kids 3 Department (8years - 10years)', 'Teens Church (14years - 16years)', 'Pre-Teens Department (11years - 13years)', 'Ushering Department', 'Greeters Department', 'Pastoral Aides Department', 'Protocols Department (Crowd Control Unit)', 'Altar Keepers Department', 'Sanctuary Keepers Department', 'Exterior Keepers Department', 'Church Admin Department', 'Ministry Information Department', 'Service Coordination Department', 'Brand Management Department', 'Royal Host Department', 'Real Friends Department', 'PCD Admin Department', 'Cell Minstry Department', 'Maturity OPerations Department', 'Community Outreach Department', 'Diplomatic Outreach Department', 'Healing Hands Medical Department', 'Sports & Fitness Department','Super Kids 1 Department (4years-5years)', 'Graphics, Animation & Projection Department', 'Livestreaming Department', 'Photography Department'];
+    $groups = ['Video Production Department','Content Creation Department', 'Sound Engineering Department', 'Facility Maintenance Department', 'Resource production Department', 'Word Bank Department', 'Loveway Choir Department', 'Loveway Minstrels Department', 'LAM Theatre (Stage drama & motion picture)', 'Full House (spoken word & hip-hop', 'LAM Dance Department', 'Super Infants Department (3months - 1year)', 'Super Toddlers Department (2years - 3years)', 'Super Kids 2 Department (6years - 7years)','Super Kids 3 Department (8years - 10years)', 'Teens Church (14years - 16years)', 'Pre-Teens Department (11years - 13years)', 'Ushering Department', 'Greeters Department', 'Pastoral Aides Department', 'Protocols Department (Crowd Control Unit)', 'Altar Keepers Department', 'Sanctuary Keepers Department', 'Exterior Keepers Department', 'Church Admin Department', 'Ministry Information Department', 'Service Coordination Department', 'Brand Management Department', 'Royal Host Department', 'Real Friends Department', 'PCD Admin Department', 'Cell Ministry Department', 'Maturity OPerations Department', 'Community Outreach Department', 'Diplomatic Outreach Department', 'Healing Hands Medical Department', 'Sports & Fitness Department','Super Kids 1 Department (4years-5years)', 'Graphics, Animation & Projection Department', 'Livestreaming Department', 'Photography Department'];
     foreach ($groups as $group) {
         $conn->query("INSERT INTO class_groups (group_name) VALUES ('$group')");
     }
@@ -76,6 +76,8 @@ if ($row['count'] == 0) {
     $conn->query("INSERT INTO admins (username, password, fullname, role) 
                  VALUES ('superadmin', '$hashed_password', 'Admin', 'superadmin')");
 }
+// Update existing admins if needed
+$conn->query("UPDATE admins SET role = 'superadmin' WHERE username = 'superadmin'");
 // Authentication functions
 function login($username, $password) {
     global $conn;
@@ -262,7 +264,25 @@ if (is_superadmin()) {
 // Get attendance records for this month
 $current_month = date('Y-m');
 $attendance = [];
-$result = $conn->query("SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name 
+// MODIFIED QUERY: Added DATE_FORMAT for attendance_time
+$result = $conn->query("SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name, 
+                        DATE_FORMAT(a.attendance_time, '%h:%i %p') AS formatted_time 
+                        FROM attendance a
+                        JOIN members m ON a.member_id = m.id
+                        JOIN class_groups g ON m.class_group_id = g.id
+                        JOIN admins ad ON a.admin_id = ad.id
+                        WHERE DATE_FORMAT(a.attendance_date, '%Y-%m') = '$current_month'
+                        ORDER BY a.attendance_date DESC, a.attendance_time DESC");
+if ($result->num_rows > 0) {
+    while($row = $result->fetch_assoc()) {
+        $attendance[] = $row;
+    }
+}// Get attendance records for this month
+$current_month = date('Y-m');
+$attendance = [];
+// MODIFIED QUERY: Added DATE_FORMAT for attendance_time
+$result = $conn->query("SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name, 
+                        DATE_FORMAT(a.attendance_time, '%h:%i %p') AS formatted_time 
                         FROM attendance a
                         JOIN members m ON a.member_id = m.id
                         JOIN class_groups g ON m.class_group_id = g.id
@@ -274,7 +294,6 @@ if ($result->num_rows > 0) {
         $attendance[] = $row;
     }
 }
-
 // Get attendance records for public view
 $public_attendance = [];
 $result = $conn->query("SELECT m.fullname AS member_name, g.group_name,
@@ -1340,12 +1359,14 @@ if (isset($_POST['theme_toggle'])) {
                 </div>
                 
                 <div class="nav">
-                    <a href="#dashboard" class="nav-link">Dashboard</a>
-                    <a href="#members"class="nav-link">Members</a>
-                    <a href="#attendance"class="nav-link">Attendance</a>
-                    <a href="#department" class="nav-link">Department</a>
-                    <a href="#admins"class="nav-link">Admins</a>
-                </div>
+    <a href="#dashboard" class="nav-link">Dashboard</a>
+    <a href="#members"class="nav-link">Members</a>
+    <a href="#attendance"class="nav-link">Attendance</a>
+    <?php if (is_superadmin()): ?>
+    <a href="#department" class="nav-link">Department</a>
+        <a href="#admins"class="nav-link">Admins</a>
+    <?php endif; ?>
+</div>
                 
                 <div class="auth-info">
                     <form method="POST" style="display: inline;">
@@ -1491,7 +1512,7 @@ if (isset($_POST['theme_toggle'])) {
                 <div class="card-header">
                     <span>Monthly Attendance Calendar: <?php echo date('F Y'); ?></span>
                 </div>
-                <div class="card-body">
+                <div class="card-body-list">
                     <div class="calendar">
                         <?php
                         $days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1626,6 +1647,7 @@ if (isset($_POST['theme_toggle'])) {
                     </table>
                 </div>
             </div>
+             <?php if (is_superadmin()): ?>
                 <div class="card" id="groups">
                 <div class="card-header">
                     <span>Departments</span>
@@ -1649,7 +1671,7 @@ if (isset($_POST['theme_toggle'])) {
                             </div>
                         </div>
                         
-                        <!-- <div class="card">
+                         <div class="card">
                             <div class="card-header" id="department">
                                 <span>Departmental Statistics</span>
                             </div>
@@ -1681,10 +1703,12 @@ if (isset($_POST['theme_toggle'])) {
                                     <?php endforeach; ?>
                                 </div>
                             </div>
-                        </div> -->
+                        </div>
                     
                 </div>
             </div>
+              <?php endif; ?>
+            <?php if (is_superadmin()): ?>
              <div class="card" id="members">
                 <div class="card-header">
                     <span>Administrator Management</span>
@@ -1725,7 +1749,8 @@ if (isset($_POST['theme_toggle'])) {
                         <div class="card-body-list">
                          
                   <table>
-    <thead>
+    
+                  <thead>
         <tr>
             <th>ID</th>
             <th>Username</th>
@@ -1742,7 +1767,7 @@ if (isset($_POST['theme_toggle'])) {
         <td><?php echo $admin['fullname']; ?></td>
         <td>
             <?php if ($admin['role'] === 'superadmin'): ?>
-                <span class="superadmin-badge">Super Admin</span>
+                <span class="superadmin-badge">Admin</span>
             <?php else: ?>
                 Admin
             <?php endif; ?>
@@ -1771,7 +1796,7 @@ if (isset($_POST['theme_toggle'])) {
                     </div>
                 </div>
      </div>
-          
+   <?php endif; ?>       
 
             <div class="footer">
               <p>Love Ambassador Ministry &copy; <?php echo date('Y'); ?> | All rights reserved</p>
