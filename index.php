@@ -277,37 +277,6 @@ if ($result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
         $attendance[] = $row;
     }
-}// Get attendance records for this month
-$current_month = date('Y-m');
-$attendance = [];
-// MODIFIED QUERY: Added DATE_FORMAT for attendance_time
-$result = $conn->query("SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name, 
-                        DATE_FORMAT(a.attendance_time, '%h:%i %p') AS formatted_time 
-                        FROM attendance a
-                        JOIN members m ON a.member_id = m.id
-                        JOIN class_groups g ON m.class_group_id = g.id
-                        JOIN admins ad ON a.admin_id = ad.id
-                        WHERE DATE_FORMAT(a.attendance_date, '%Y-%m') = '$current_month'
-                        ORDER BY a.attendance_date DESC, a.attendance_time DESC");
-if ($result->num_rows > 0) {
-    while($row = $result->fetch_assoc()) {
-        $attendance[] = $row;
-    }
-}
-// Get attendance records for public view
-$public_attendance = [];
-$result = $conn->query("SELECT m.fullname AS member_name, g.group_name,
-                        DATE_FORMAT(a.attendance_date, '%M %d, %Y') AS formatted_date, 
-                        DATE_FORMAT(a.attendance_time, '%h:%i %p') AS formatted_time
-                        FROM attendance a
-                        JOIN members m ON a.member_id = m.id
-                        JOIN class_groups g ON m.class_group_id = g.id
-                        ORDER BY a.attendance_date DESC, a.attendance_time DESC
-                        LIMIT 50");
-if ($result->num_rows > 0) {
-    while($row = $result->fetch_assoc()) {
-        $public_attendance[] = $row;
-    }
 }
 
 // Handle worker attendance report
@@ -363,11 +332,17 @@ $total_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance")->fe
 $today_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance WHERE attendance_date = CURDATE()")->fetch_assoc()['count'];
 $monthly_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance WHERE DATE_FORMAT(attendance_date, '%Y-%m') = '$current_month'")->fetch_assoc()['count'];
 
-// Get daily attendance for the current month
+// Get the selected month for attendance calendar
+$calendar_month = isset($_GET['calendar_month']) ? $_GET['calendar_month'] : date('Y-m');
+if (isset($_POST['calendar_month'])) {
+    $calendar_month = $_POST['calendar_month'];
+}
+
+// Get daily attendance for the selected month
 $daily_attendance = [];
 $result = $conn->query("SELECT attendance_date, COUNT(*) as count 
                         FROM attendance 
-                        WHERE DATE_FORMAT(attendance_date, '%Y-%m') = '$current_month'
+                        WHERE DATE_FORMAT(attendance_date, '%Y-%m') = '$calendar_month'
                         GROUP BY attendance_date 
                         ORDER BY attendance_date");
 if ($result->num_rows > 0) {
@@ -843,8 +818,9 @@ if (isset($_POST['theme_toggle'])) {
             font-weight: 600;
         }
 
-        .public-card-body {
+        .public-card-body, .public-card-body-list {
             padding: 25px;
+
         }
 
         .public-stats {
@@ -1250,6 +1226,35 @@ if (isset($_POST['theme_toggle'])) {
             flex: 1;
             min-width: 200px;
         }
+        
+        /* Add this style for month selector */
+        .month-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .month-selector label {
+            font-weight: bold;
+        }
+        
+        .month-selector select {
+            padding: 8px 12px;
+            border: 1px solid var(--light-gray);
+            border-radius: 4px;
+            background: var(--card-bg);
+            color: var(--text);
+        }
+        
+        .month-selector button {
+            padding: 8px 15px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
 
         @media (max-width: 768px) {
             .header-content {
@@ -1276,8 +1281,9 @@ if (isset($_POST['theme_toggle'])) {
             .group-list {
                 flex-direction: column;
             }
-           .card-body-list{
+           .card-body-list, .public-card-body-list{
             overflow-x: scroll;
+            
         }    
         }
     </style>
@@ -1320,7 +1326,13 @@ if (isset($_POST['theme_toggle'])) {
                     <div class="public-logo">
                     Workers Attendance
                   </div>
-                  <p>Attendance records of all Church Workers</p>
+                  <p>Attendance Records of all Church Workers</p>
+                  <form method="POST" style="display: inline;">
+                        <input type="hidden" name="theme" value="<?php echo $theme; ?>">
+                        <button type="submit" name="theme_toggle" class="theme-toggle">
+                            <i class="fas fa-<?php echo $theme == 'light' ? 'moon' : 'sun'; ?>"></i>
+                        </button>
+                    </form>
                 </div>
             </div>
             
@@ -1365,7 +1377,7 @@ if (isset($_POST['theme_toggle'])) {
                                     $group_members = array_filter($members, function($m) use ($group) {
                                         return $m['class_group_id'] == $group['id'];
                                     });
-                                    foreach (array_slice($group_members, 0, 5) as $member): 
+                                    foreach (array_slice($group_members, 0, 4) as $member): 
                                     ?>
                                         <div class="team-member">
                                             <div class="member-avatar-small team-<?php echo $group_class; ?>">
@@ -1374,9 +1386,9 @@ if (isset($_POST['theme_toggle'])) {
                                             <div><?php echo $member['fullname']; ?></div>
                                         </div>
                                     <?php endforeach; ?>
-                                    <?php if (count($group_members) > 5): ?>
+                                    <?php if (count($group_members) > 4): ?>
                                         <div class="text-center" style="margin-top: 10px; font-size: 0.9rem;">
-                                            +<?php echo count($group_members) - 5; ?> more members
+                                            +<?php echo count($group_members) - 4; ?> more members
                                         </div>
                                     <?php endif; ?>
                                 </div>
@@ -1387,31 +1399,39 @@ if (isset($_POST['theme_toggle'])) {
                 </div>
                 
                 <div class="public-card">
-                    <div class="public-card-header">
+                <div class="public-card-header">
                         <i class="fas fa-history"></i> Recent Attendance Records
                     </div>
-                    <div class="public-card-body">
-                        <?php if (!empty($public_attendance)): ?>
-                            <?php foreach ($public_attendance as $record): 
+                <div class="public-card-body-list">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Member</th>
+                                <th>Department</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($attendance as $record): 
                                 $group_class = strtolower(str_replace(' ', '-', $record['group_name']));
                             ?>
-                                <div class="attendance-record">
-                                    <div class="attendance-avatar" style="background: var(--group-<?php echo $group_class; ?>);">
-                                        <?php echo substr($record['member_name'], 0, 1); ?>
-                                    </div>
-                                    <div class="attendance-info">
-                                        <div class="attendance-name"><?php echo $record['member_name']; ?>
-                                            <span class="group-badge group-<?php echo $group_class; ?>" style="background: var(--group-<?php echo $group_class; ?>);"><?php echo $record['group_name']; ?></span>
-                                        </div>
-                                        <div class="attendance-time"><?php echo $record['formatted_date']; ?> at <?php echo $record['formatted_time']; ?></div>
-                                    </div>
-                                </div>
+                                <tr>
+                                    <td><?php echo $record['attendance_date']; ?></td>
+                                    <td><?php echo $record['formatted_time']; ?></td>
+                                    <td><?php echo $record['member_name']; ?></td>
+                                    <td><?php echo $record['group_name']; ?></td>
+                                </tr>
                             <?php endforeach; ?>
-                        <?php else: ?>
-                            <p>No attendance records found</p>
-                        <?php endif; ?>
-                    </div>
+                            <?php if (empty($attendance)): ?>
+                                <tr>
+                                    <td colspan="5" style="text-align:center;">No attendance records found for this month</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
+            </div>
                 
                 <div class="text-center">
                     <a href="index.php" class="btn btn-outline">
@@ -1560,7 +1580,7 @@ if (isset($_POST['theme_toggle'])) {
                         $current_month_attendance = $conn->query("SELECT COUNT(*) as count 
                                                          FROM attendance 
                                                          WHERE member_id = ".$worker_info['id']."
-                                                         AND DATE_FORMAT(attendance_date, '%Y-%m') = '$current_month'")->fetch_assoc()['count'];
+                                                         AND DATE_FORMAT(attendance_date, '%m-%Y') = '$current_month'")->fetch_assoc()['count'];
                         echo $current_month_attendance;
                         ?>
                     </div>
@@ -1617,6 +1637,7 @@ if (isset($_POST['theme_toggle'])) {
                     </form>
                     
                     <?php if (!empty($worker_attendance)): ?>
+                        <div class=" card-body-list">
                         <table>
                             <thead>
                                 <tr>
@@ -1637,6 +1658,7 @@ if (isset($_POST['theme_toggle'])) {
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
+                                </div>
                     <?php else: ?>
                         <p>No attendance records found for this worker.</p>
                     <?php endif; ?>
@@ -1809,9 +1831,29 @@ if (isset($_POST['theme_toggle'])) {
             
             <div class="card">
                 <div class="card-header">
-                    <span>Monthly Attendance Calendar: <?php echo date('F Y'); ?></span>
+                    <span>Attendance Calendar: <?php echo date('F Y', strtotime($calendar_month)); ?></span>
                 </div>
                 <div class="card-body-list">
+                    <form method="POST" class="month-selector">
+                        <label for="calendar_month">Select Month:</label>
+                        <select name="calendar_month" id="calendar_month">
+                            <?php
+                            // Generate month options for the last 6 months and next 6 months
+                            $current = new DateTime();
+                            $current->modify('-6 months');
+                            
+                            for ($i = 0; $i < 13; $i++) {
+                                $month_value = $current->format('Y-m');
+                                $month_name = $current->format('F Y');
+                                $selected = ($month_value == $calendar_month) ? 'selected' : '';
+                                echo "<option value=\"$month_value\" $selected>$month_name</option>";
+                                $current->modify('+1 month');
+                            }
+                            ?>
+                        </select>
+                        <button type="submit">Show</button>
+                    </form>
+                    
                     <div class="calendar">
                         <?php
                         $days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1820,8 +1862,8 @@ if (isset($_POST['theme_toggle'])) {
                         <?php endforeach; ?>
                         
                         <?php
-                        $first_day = date('Y-m-01');
-                        $last_day = date('Y-m-t');
+                        $first_day = $calendar_month . '-01';
+                        $last_day = date('Y-m-t', strtotime($first_day));
                         $start_day = date('w', strtotime($first_day));
                         
                         // Fill empty days at the beginning
@@ -1831,12 +1873,12 @@ if (isset($_POST['theme_toggle'])) {
                         
                         // Create calendar days
                         $current_day = 1;
-                        $total_days = date('t');
-                        $current_month = date('m');
-                        $current_year = date('Y');
+                        $total_days = date('t', strtotime($first_day));
+                        $current_year = date('Y', strtotime($first_day));
+                        $current_month_num = date('m', strtotime($first_day));
                         
                         while ($current_day <= $total_days) {
-                            $current_date = sprintf('%04d-%02d-%02d', $current_year, $current_month, $current_day);
+                            $current_date = sprintf('%04d-%02d-%02d', $current_year, $current_month_num, $current_day);
                             $day_of_week = date('w', strtotime($current_date));
                             
                             $attendance_count = isset($daily_attendance[$current_date]) ? $daily_attendance[$current_date] : 0;
@@ -1885,7 +1927,7 @@ if (isset($_POST['theme_toggle'])) {
                             ?>
                                 <tr>
                                     <td><?php echo $record['attendance_date']; ?></td>
-                                    <td><?php echo $record['attendance_time']; ?></td>
+                                    <td><?php echo $record['formatted_time']; ?></td>
                                     <td><?php echo $record['member_name']; ?></td>
                                     <td><span class="group-badge" style="background: var(--group-<?php echo $group_class; ?>);"><?php echo $record['group_name']; ?></span></td>
                                     <td><?php echo $record['admin_name']; ?></td>
@@ -1929,8 +1971,8 @@ if (isset($_POST['theme_toggle'])) {
                                     <td><?php echo $member['phone'] ? $member['phone'] : 'N/A'; ?></td>
                                     <td>
                                         <a href="?view_worker_attendance=1&worker_id=<?php echo $member['id']; ?>" 
-                                           class="btn" style="margin-right:5px;">
-                                            <i class="fas fa-calendar-check"></i> View Attendance
+                                           class="btn" style="margin-right:5px; margin-bottom: 15px;">
+                                          View Attendance
                                         </a>
                                         <form method="POST" style="display:inline;">
                                             <input type="hidden" name="member_id" value="<?php echo $member['id']; ?>">
@@ -1954,6 +1996,7 @@ if (isset($_POST['theme_toggle'])) {
                 <div class="card" id="groups">
                 <div class="card-header">
                     <span>Departments</span>
+                     <span class="superadmin-badge">Super Admin Only</span>
                 </div>
                 <div class="card-body">
                     
