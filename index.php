@@ -10,6 +10,20 @@ ini_set('session.cookie_lifetime', 0); // Session cookie expires when browser cl
 
 session_start();
 
+// Initialize theme
+$theme = isset($_SESSION['theme']) ? $_SESSION['theme'] : 'light';
+
+// Handle theme toggle separately (non-critical action)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['theme_toggle'])) {
+    $new_theme = ($_POST['theme'] == 'light') ? 'dark' : 'light';
+    $_SESSION['theme'] = $new_theme;
+    
+    // Redirect to prevent form resubmission
+    $redirect_url = $_SERVER['HTTP_REFERER'] ?? 'index.php';
+    header("Location: $redirect_url");
+    exit();
+}
+
 // Regenerate session ID to prevent session fixation (preserve CSRF token)
 if (!isset($_SESSION['created'])) {
     $_SESSION['created'] = time();
@@ -201,9 +215,17 @@ if (isset($_GET['action'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // CSRF token validation
+    // Handle CSRF validation failure with redirect instead of die()
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
-        die('CSRF validation failed.');
+        error_log('CSRF validation failed for IP: ' . $_SERVER['REMOTE_ADDR']);
+        
+        // Redirect to appropriate page
+        if (is_logged_in()) {
+            header("Location: index.php?page=dashboard");
+        } else {
+            header("Location: index.php");
+        }
+        exit();
     }
     
     if (isset($_POST['add_member'])) {
@@ -460,17 +482,6 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     
     fclose($output);
     exit();
-}
-
-// Theme handling
-$theme = 'light';
-if (isset($_POST['theme_toggle'])) {
-    $theme = ($_POST['theme'] == 'light') ? 'dark' : 'light';
-    $_SESSION['theme'] = $theme;
-} elseif (isset($_SESSION['theme'])) {
-    $theme = $_SESSION['theme'];
-} else {
-    $_SESSION['theme'] = $theme;
 }
 ?>
 <!DOCTYPE html>
