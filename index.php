@@ -1,7 +1,34 @@
 <?php
+// Security enhancements - must be set BEFORE session_start()
+$is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
+             (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+ini_set('session.cookie_httponly', 1);
+ini_set('session.cookie_secure', $is_https ? 1 : 0);
+ini_set('session.cookie_samesite', 'Strict');
+ini_set('session.use_strict_mode', 1);
+ini_set('session.cookie_lifetime', 0); // Session cookie expires when browser closes
+
 session_start();
 
-// Database configuration
+// Regenerate session ID to prevent session fixation (preserve CSRF token)
+if (!isset($_SESSION['created'])) {
+    $_SESSION['created'] = time();
+    // Generate CSRF token immediately after session creation
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+} elseif (time() - $_SESSION['created'] > 1800) {
+    // Preserve existing CSRF token during regeneration
+    $csrf_token_backup = $_SESSION['csrf_token'] ?? null;
+    
+    session_regenerate_id(true);
+    $_SESSION['created'] = time();
+    
+    // Restore CSRF token after regeneration
+    if ($csrf_token_backup) {
+        $_SESSION['csrf_token'] = $csrf_token_backup;
+    }
+}
+
+// Database configuration - In production, store in environment variables
 define('DB_HOST', 'localhost');
 define('DB_USER', 'root');
 define('DB_PASS', '');
@@ -12,10 +39,11 @@ $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
 
 // Check connection
 if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+    error_log("Database connection failed: " . $conn->connect_error);
+    die("System maintenance in progress. Please try again later.");
 }
 
-// Create tables if they don't exist
+// Create tables if they don't exist (using prepared statements)
 $tables = [
     "CREATE TABLE IF NOT EXISTS admins (
         id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -24,13 +52,13 @@ $tables = [
         fullname VARCHAR(50) NOT NULL,
         role ENUM('superadmin', 'admin') DEFAULT 'admin',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )",
+    ) ENGINE=InnoDB",
     
     "CREATE TABLE IF NOT EXISTS class_groups (
         id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         group_name VARCHAR(50) NOT NULL UNIQUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )",
+    ) ENGINE=InnoDB",
     
     "CREATE TABLE IF NOT EXISTS members (
         id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -39,8 +67,8 @@ $tables = [
         phone VARCHAR(20),
         class_group_id INT(6) UNSIGNED,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (class_group_id) REFERENCES class_groups(id)
-    )",
+        FOREIGN KEY (class_group_id) REFERENCES class_groups(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB",
     
     "CREATE TABLE IF NOT EXISTS attendance (
         id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -48,23 +76,27 @@ $tables = [
         admin_id INT(6) UNSIGNED NOT NULL,
         attendance_date DATE NOT NULL,
         attendance_time TIME NOT NULL,
-        FOREIGN KEY (member_id) REFERENCES members(id),
-        FOREIGN KEY (admin_id) REFERENCES admins(id)
-    )"
+        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+        FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB"
 ];
 
 foreach ($tables as $sql) {
     $conn->query($sql);
 }
 
-// Insert default groups if none exist
+// Insert default groups if none exist (using prepared statements)
 $result = $conn->query("SELECT COUNT(*) as count FROM class_groups");
 $row = $result->fetch_assoc();
 if ($row['count'] == 0) {
     $groups = ['Video Production Department','Content Creation Department', 'Sound Engineering Department', 'Facility Maintenance Department', 'Resource production Department', 'Word Bank Department', 'Loveway Choir Department', 'Loveway Minstrels Department', 'LAM Theatre (Stage drama & motion picture)', 'Full House (spoken word & hip-hop', 'LAM Dance Department', 'Super Infants Department (3months - 1year)', 'Super Toddlers Department (2years - 3years)', 'Super Kids 2 Department (6years - 7years)','Super Kids 3 Department (8years - 10years)', 'Teens Church (14years - 16years)', 'Pre-Teens Department (11years - 13years)', 'Ushering Department', 'Greeters Department', 'Pastoral Aides Department', 'Protocols Department (Crowd Control Unit)', 'Altar Keepers Department', 'Sanctuary Keepers Department', 'Exterior Keepers Department', 'Church Admin Department', 'Ministry Information Department', 'Service Coordination Department', 'Brand Management Department', 'Royal Host Department', 'Real Friends Department', 'PCD Admin Department', 'Cell Ministry Department', 'Maturity OPerations Department', 'Community Outreach Department', 'Diplomatic Outreach Department', 'Healing Hands Medical Department', 'Sports & Fitness Department','Super Kids 1 Department (4years-5years)', 'Graphics, Animation & Projection Department', 'Livestreaming Department', 'Photography Department'];
+    
+    $stmt = $conn->prepare("INSERT INTO class_groups (group_name) VALUES (?)");
     foreach ($groups as $group) {
-        $conn->query("INSERT INTO class_groups (group_name) VALUES ('$group')");
+        $stmt->bind_param("s", $group);
+        $stmt->execute();
     }
+    $stmt->close();
 }
 
 // Insert default superadmin if none exists
@@ -72,12 +104,27 @@ $result = $conn->query("SELECT COUNT(*) as count FROM admins");
 $row = $result->fetch_assoc();
 if ($row['count'] == 0) {
     $hashed_password = password_hash('admin123', PASSWORD_DEFAULT);
-    // CHANGE 'admin' TO 'superadmin' IN THIS LINE:
-    $conn->query("INSERT INTO admins (username, password, fullname, role) 
-                 VALUES ('superadmin', '$hashed_password', 'Admin', 'superadmin')");
+    $stmt = $conn->prepare("INSERT INTO admins (username, password, fullname, role) VALUES (?, ?, ?, 'superadmin')");
+    $username = 'superadmin';
+    $fullname = 'Admin';
+    $stmt->bind_param("sss", $username, $hashed_password, $fullname);
+    $stmt->execute();
+    $stmt->close();
 }
+
 // Update existing admins if needed
-$conn->query("UPDATE admins SET role = 'superadmin' WHERE username = 'superadmin'");
+$stmt = $conn->prepare("UPDATE admins SET role = 'superadmin' WHERE username = ?");
+$username = 'superadmin';
+$stmt->bind_param("s", $username);
+$stmt->execute();
+$stmt->close();
+
+// CSRF token generation (ensure token always exists)
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
 // Authentication functions
 function login($username, $password) {
     global $conn;
@@ -89,16 +136,25 @@ function login($username, $password) {
     if ($result->num_rows === 1) {
         $admin = $result->fetch_assoc();
         if (password_verify($password, $admin['password'])) {
-            // MAKE SURE ROLE IS SET CORRECTLY
+            // Password rehashing if needed
+            if (password_needs_rehash($admin['password'], PASSWORD_DEFAULT)) {
+                $newHash = password_hash($password, PASSWORD_DEFAULT);
+                $update_stmt = $conn->prepare("UPDATE admins SET password = ? WHERE id = ?");
+                $update_stmt->bind_param("si", $newHash, $admin['id']);
+                $update_stmt->execute();
+                $update_stmt->close();
+            }
+            
             $_SESSION['admin_id'] = $admin['id'];
             $_SESSION['username'] = $admin['username'];
             $_SESSION['fullname'] = $admin['fullname'];
-            $_SESSION['role'] = $admin['role']; // This must be 'superadmin' for the first user
+            $_SESSION['role'] = $admin['role'];
             return true;
         }
     }
     return false;
 }
+
 function is_logged_in() {
     return isset($_SESSION['admin_id']);
 }
@@ -108,6 +164,7 @@ function is_superadmin() {
 }
 
 function logout() {
+    $_SESSION = array();
     session_destroy();
     header("Location: index.php");
     exit();
@@ -144,21 +201,36 @@ if (isset($_GET['action'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // CSRF token validation
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die('CSRF validation failed.');
+    }
+    
     if (isset($_POST['add_member'])) {
-        $fullname = $conn->real_escape_string($_POST['fullname']);
-        $email = $conn->real_escape_string($_POST['email']);
-        $phone = $conn->real_escape_string($_POST['phone']);
+        $fullname = htmlspecialchars($_POST['fullname'], ENT_QUOTES, 'UTF-8');
+        $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
+        $phone = preg_replace('/[^0-9+]/', '', $_POST['phone']);
         $class_group_id = intval($_POST['class_group_id']);
         
-        $sql = "INSERT INTO members (fullname, email, phone, class_group_id) 
-                VALUES ('$fullname', '$email', '$phone', $class_group_id)";
-        $conn->query($sql);
+        $stmt = $conn->prepare("INSERT INTO members (fullname, email, phone, class_group_id) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param("sssi", $fullname, $email, $phone, $class_group_id);
+        $stmt->execute();
+        $stmt->close();
     }
     
     if (isset($_POST['delete_member'])) {
         $member_id = intval($_POST['member_id']);
-        $sql = "DELETE FROM members WHERE id = $member_id";
-        $conn->query($sql);
+        // First delete attendance records
+        $stmt = $conn->prepare("DELETE FROM attendance WHERE member_id = ?");
+        $stmt->bind_param("i", $member_id);
+        $stmt->execute();
+        $stmt->close();
+        
+        // Then delete the member
+        $stmt = $conn->prepare("DELETE FROM members WHERE id = ?");
+        $stmt->bind_param("i", $member_id);
+        $stmt->execute();
+        $stmt->close();
     }
     
     if (isset($_POST['mark_attendance'])) {
@@ -169,26 +241,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $date = date('Y-m-d');
             $time = date('H:i:s');
             
-            $sql = "INSERT INTO attendance (member_id, admin_id, attendance_date, attendance_time) 
-                    VALUES ($member_id, $admin_id, '$date', '$time')";
-            $conn->query($sql);
+            $stmt = $conn->prepare("INSERT INTO attendance (member_id, admin_id, attendance_date, attendance_time) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("iiss", $member_id, $admin_id, $date, $time);
+            $stmt->execute();
+            $stmt->close();
             $attendance_success = "Attendance marked successfully!";
         } else {
             $attendance_error = "This member has already been marked present today!";
         }
     }
     
-   
     if (isset($_POST['add_admin'])) {
         if (is_superadmin()) {
-            $username = $conn->real_escape_string($_POST['username']);
-            $fullname = $conn->real_escape_string($_POST['fullname']);
-            $password = $conn->real_escape_string($_POST['password']);
+            $username = htmlspecialchars($_POST['username'], ENT_QUOTES, 'UTF-8');
+            $fullname = htmlspecialchars($_POST['fullname'], ENT_QUOTES, 'UTF-8');
+            $password = $_POST['password'];
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
             
-            $sql = "INSERT INTO admins (username, password, fullname) 
-                    VALUES ('$username', '$hashed_password', '$fullname')";
-            $conn->query($sql);
+            $stmt = $conn->prepare("INSERT INTO admins (username, password, fullname) VALUES (?, ?, ?)");
+            $stmt->bind_param("sss", $username, $hashed_password, $fullname);
+            $stmt->execute();
+            $stmt->close();
         }
     }
     
@@ -197,17 +270,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $admin_id = intval($_POST['admin_id']);
             // Prevent superadmin from deleting themselves
             if ($admin_id != $_SESSION['admin_id']) {
-                $sql = "DELETE FROM admins WHERE id = $admin_id";
-                $conn->query($sql);
+                // Reassign attendance records to current admin
+                $current_admin_id = $_SESSION['admin_id'];
+                $stmt = $conn->prepare("UPDATE attendance SET admin_id = ? WHERE admin_id = ?");
+                $stmt->bind_param("ii", $current_admin_id, $admin_id);
+                $stmt->execute();
+                $stmt->close();
+                
+                // Then delete admin
+                $stmt = $conn->prepare("DELETE FROM admins WHERE id = ?");
+                $stmt->bind_param("i", $admin_id);
+                $stmt->execute();
+                $stmt->close();
             }
         }
     }
     
-    
     if (isset($_POST['add_group'])) {
-        $group_name = $conn->real_escape_string($_POST['group_name']);
-        $sql = "INSERT INTO class_groups (group_name) VALUES ('$group_name')";
-        $conn->query($sql);
+        $group_name = htmlspecialchars($_POST['group_name'], ENT_QUOTES, 'UTF-8');
+        $stmt = $conn->prepare("INSERT INTO class_groups (group_name) VALUES (?)");
+        $stmt->bind_param("s", $group_name);
+        $stmt->execute();
+        $stmt->close();
     }
     
     if (isset($_POST['delete_group'])) {
@@ -215,10 +299,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $default_group = $conn->query("SELECT id FROM class_groups ORDER BY id LIMIT 1")->fetch_assoc();
         if ($default_group) {
             $default_id = $default_group['id'];
-            $conn->query("UPDATE members SET class_group_id = $default_id WHERE class_group_id = $group_id");
+            $stmt = $conn->prepare("UPDATE members SET class_group_id = ? WHERE class_group_id = ?");
+            $stmt->bind_param("ii", $default_id, $group_id);
+            $stmt->execute();
+            $stmt->close();
         }
-        $sql = "DELETE FROM class_groups WHERE id = $group_id";
-        $conn->query($sql);
+        $stmt = $conn->prepare("DELETE FROM class_groups WHERE id = ?");
+        $stmt->bind_param("i", $group_id);
+        $stmt->execute();
+        $stmt->close();
     }
 }
 
@@ -256,7 +345,6 @@ if (is_superadmin()) {
             }
         }
     } else {
-        // Add error logging
         error_log("Admin query failed: " . $conn->error);
     }
 }
@@ -264,7 +352,6 @@ if (is_superadmin()) {
 // Get attendance records for this month
 $current_month = date('Y-m');
 $attendance = [];
-// MODIFIED QUERY: Added DATE_FORMAT for attendance_time
 $result = $conn->query("SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name, 
                         DATE_FORMAT(a.attendance_time, '%h:%i %p') AS formatted_time 
                         FROM attendance a
@@ -391,11 +478,14 @@ if (isset($_POST['theme_toggle'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
     <title>Love Ambassador Attendance</title>
     <link rel="icon" href="./img/lam-logo.jpg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
-  <style>
+    <style>
+        /* CSS styles remain the same as your original code */
         :root {
             --primary: #4361ee;
             --primary-dark: #3f37c9;
@@ -1770,6 +1860,7 @@ if (isset($_POST['theme_toggle'])) {
                         </div>
                         
                         <form method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                             <div class="form-group">
                                 <label for="member_id">Select Workers</label>
                                 <select class="form-control" name="member_id" id="member_id" required>
@@ -1796,6 +1887,7 @@ if (isset($_POST['theme_toggle'])) {
                     </div>
                     <div class="card-body">
                         <form method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                             <div class="form-group">
                                 <label for="fullname">Full Name</label>
                                 <input type="text" class="form-control" name="fullname" id="fullname" required>
@@ -1835,6 +1927,7 @@ if (isset($_POST['theme_toggle'])) {
                 </div>
                 <div class="card-body-list">
                     <form method="POST" class="month-selector">
+                        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                         <label for="calendar_month">Select Month:</label>
                         <select name="calendar_month" id="calendar_month">
                             <?php
@@ -1960,7 +2053,7 @@ if (isset($_POST['theme_toggle'])) {
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($members as $member): 
+                             <?php foreach ($members as $member): 
                                 $group_class = strtolower(str_replace(' ', '-', $member['group_name']));
                             ?>
                                 <tr>
@@ -1975,6 +2068,7 @@ if (isset($_POST['theme_toggle'])) {
                                           View Attendance
                                         </a>
                                         <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                                             <input type="hidden" name="member_id" value="<?php echo $member['id']; ?>">
                                             <button type="submit" name="delete_member" class="action-btn btn-danger">
                                                 <i class="fas fa-trash-alt"></i> Delete
@@ -2006,6 +2100,7 @@ if (isset($_POST['theme_toggle'])) {
                             </div>
                             <div class="card-body">
                                 <form method="POST">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                                     <div class="form-group">
                                         <label for="group_name">Departmental Name</label>
                                         <input type="text" class="form-control" name="group_name" id="group_name" required>
@@ -2034,6 +2129,7 @@ if (isset($_POST['theme_toggle'])) {
                                             <?php echo $group['member_count']; ?> members
                                         </div>
                                         <form method="POST" style="margin-top: 15px;">
+                                            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                                             <input type="hidden" name="group_id" value="<?php echo $group['id']; ?>">
                                             <?php if ($group['member_count'] == 0): ?>
                                                 <button type="submit" name="delete_group" class="btn btn-danger" style="width: 100%;">
@@ -2067,6 +2163,7 @@ if (isset($_POST['theme_toggle'])) {
                             </div>
                             <div class="card-body">
                                 <form method="POST">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                                         <div class="form-group">
                                 <label for="username">Username</label>
                                 <input type="text" class="form-control" name="username" id="username" required>
@@ -2121,6 +2218,7 @@ if (isset($_POST['theme_toggle'])) {
         <td>
             <?php if ($admin['id'] != $_SESSION['admin_id']): ?>
                 <form method="POST" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                     <input type="hidden" name="admin_id" value="<?php echo $admin['id']; ?>">
                     <button type="submit" name="delete_admin" class="action-btn btn-danger">
                         <i class="fas fa-trash-alt"></i> Delete
@@ -2148,7 +2246,7 @@ if (isset($_POST['theme_toggle'])) {
               <p>Love Ambassador Ministry &copy; <?php echo date('Y'); ?> | All rights reserved</p>
 
                 <p style="margin-top: 10px;">
-                    <a href="?page=public" class="btn btn-outline">
+                    <a href="?page=public" class="btn btn-outline" style="margin-top: 10px;">
                         <i class="fas fa-eye"></i> View Public Attendance
                     </a>
                 </p>
