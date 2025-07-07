@@ -214,10 +214,23 @@ if (isset($_GET['action'])) {
     }
 }
 
+// Notification messages
+$notification = [];
+if (isset($_SESSION['notification'])) {
+    $notification = $_SESSION['notification'];
+    unset($_SESSION['notification']);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Handle CSRF validation failure with redirect instead of die()
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         error_log('CSRF validation failed for IP: ' . $_SERVER['REMOTE_ADDR']);
+        
+        // Set notification
+        $_SESSION['notification'] = [
+            'type' => 'error',
+            'message' => 'Security validation failed. Please try again.'
+        ];
         
         // Redirect to appropriate page
         if (is_logged_in()) {
@@ -236,8 +249,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $stmt = $conn->prepare("INSERT INTO members (fullname, email, phone, class_group_id) VALUES (?, ?, ?, ?)");
         $stmt->bind_param("sssi", $fullname, $email, $phone, $class_group_id);
-        $stmt->execute();
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Worker added successfully!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'error',
+                'message' => 'Failed to add worker: ' . $conn->error
+            ];
+        }
         $stmt->close();
+        header("Location: index.php?page=dashboard#members");
+        exit();
     }
     
     if (isset($_POST['delete_member'])) {
@@ -251,8 +276,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Then delete the member
         $stmt = $conn->prepare("DELETE FROM members WHERE id = ?");
         $stmt->bind_param("i", $member_id);
-        $stmt->execute();
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Worker deleted successfully!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'error',
+                'message' => 'Failed to delete worker: ' . $conn->error
+            ];
+        }
         $stmt->close();
+        header("Location: index.php?page=dashboard#members");
+        exit();
     }
     
     if (isset($_POST['mark_attendance'])) {
@@ -265,12 +302,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $stmt = $conn->prepare("INSERT INTO attendance (member_id, admin_id, attendance_date, attendance_time) VALUES (?, ?, ?, ?)");
             $stmt->bind_param("iiss", $member_id, $admin_id, $date, $time);
-            $stmt->execute();
+            if ($stmt->execute()) {
+                $_SESSION['notification'] = [
+                    'type' => 'success',
+                    'message' => 'Attendance marked successfully!'
+                ];
+            } else {
+                $_SESSION['notification'] = [
+                    'type' => 'error',
+                    'message' => 'Failed to mark attendance: ' . $conn->error
+                ];
+            }
             $stmt->close();
-            $attendance_success = "Attendance marked successfully!";
         } else {
-            $attendance_error = "This member has already been marked present today!";
+            $_SESSION['notification'] = [
+                'type' => 'warning',
+                'message' => 'This worker has already been marked present today!'
+            ];
         }
+        header("Location: index.php?page=dashboard");
+        exit();
     }
     
     if (isset($_POST['add_admin'])) {
@@ -282,8 +333,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $stmt = $conn->prepare("INSERT INTO admins (username, password, fullname) VALUES (?, ?, ?)");
             $stmt->bind_param("sss", $username, $hashed_password, $fullname);
-            $stmt->execute();
+            if ($stmt->execute()) {
+                $_SESSION['notification'] = [
+                    'type' => 'success',
+                    'message' => 'Admin added successfully!'
+                ];
+            } else {
+                $_SESSION['notification'] = [
+                    'type' => 'error',
+                    'message' => 'Failed to add admin: ' . $conn->error
+                ];
+            }
             $stmt->close();
+            header("Location: index.php?page=dashboard#admins");
+            exit();
         }
     }
     
@@ -302,8 +365,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Then delete admin
                 $stmt = $conn->prepare("DELETE FROM admins WHERE id = ?");
                 $stmt->bind_param("i", $admin_id);
-                $stmt->execute();
+                if ($stmt->execute()) {
+                    $_SESSION['notification'] = [
+                        'type' => 'success',
+                        'message' => 'Admin deleted successfully!'
+                    ];
+                } else {
+                    $_SESSION['notification'] = [
+                        'type' => 'error',
+                        'message' => 'Failed to delete admin: ' . $conn->error
+                    ];
+                }
                 $stmt->close();
+                header("Location: index.php?page=dashboard#admins");
+                exit();
             }
         }
     }
@@ -312,8 +387,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $group_name = htmlspecialchars($_POST['group_name'], ENT_QUOTES, 'UTF-8');
         $stmt = $conn->prepare("INSERT INTO class_groups (group_name) VALUES (?)");
         $stmt->bind_param("s", $group_name);
-        $stmt->execute();
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Department added successfully!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'error',
+                'message' => 'Failed to add department: ' . $conn->error
+            ];
+        }
         $stmt->close();
+        header("Location: index.php?page=dashboard#department");
+        exit();
     }
     
     if (isset($_POST['delete_group'])) {
@@ -328,8 +415,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $stmt = $conn->prepare("DELETE FROM class_groups WHERE id = ?");
         $stmt->bind_param("i", $group_id);
-        $stmt->execute();
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Department deleted successfully!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'error',
+                'message' => 'Failed to delete department: ' . $conn->error
+            ];
+        }
         $stmt->close();
+        header("Location: index.php?page=dashboard#department");
+        exit();
     }
 }
 
@@ -495,6 +594,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     <title>Love Ambassador Attendance</title>
     <link rel="icon" href="./img/lam-logo.jpg">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/@sweetalert2/theme-<?php echo $theme; ?>" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         /* CSS styles remain the same as your original code */
         :root {
@@ -1356,6 +1457,24 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
             border-radius: 4px;
             cursor: pointer;
         }
+        
+        /* Search box */
+        .search-box {
+            position: relative;
+            margin-bottom: 15px;
+        }
+        
+        .search-box input {
+            padding-left: 40px;
+        }
+        
+        .search-box i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray);
+        }
 
         @media (max-width: 768px) {
             .header-content {
@@ -1407,6 +1526,31 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
             
             // Reset to first option
             memberSelect.value = "";
+        }
+        
+        // Search function for workers table
+        function searchWorkers() {
+            const input = document.getElementById('search-worker');
+            const filter = input.value.toLowerCase();
+            const table = document.getElementById('workers-table');
+            const tr = table.getElementsByTagName('tr');
+            
+            for (let i = 1; i < tr.length; i++) { // Start from 1 to skip header
+                const tds = tr[i].getElementsByTagName('td');
+                let found = false;
+                
+                for (let j = 0; j < tds.length; j++) {
+                    if (tds[j]) {
+                        const txtValue = tds[j].textContent || tds[j].innerText;
+                        if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                
+                tr[i].style.display = found ? '' : 'none';
+            }
         }
     </script>
 </head>
@@ -1552,10 +1696,6 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
         <div class="login-container">
             <div class="login-card">
                 <h2 class="login-title">Admin Login</h2>
-                
-                <?php if (isset($login_error)): ?>
-                    <div class="alert alert-danger"><?php echo $login_error; ?></div>
-                <?php endif; ?>
                 
                 <form method="POST" action="?action=login">
                     <div class="form-group">
@@ -1849,12 +1989,6 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                         <span>Mark Today's Attendance</span>
                     </div>
                     <div class="card-body">
-                        <?php if (isset($attendance_success)): ?>
-                            <div class="alert alert-success"><?php echo $attendance_success; ?></div>
-                        <?php endif; ?>
-                        <?php if (isset($attendance_error)): ?>
-                            <div class="alert alert-danger"><?php echo $attendance_error; ?></div>
-                        <?php endif; ?>
                         <div class="search-container">
                             <div class="form-group" style="flex: 1;">
                                 <label for="group_filter">Filter by Departments</label>
@@ -2051,8 +2185,15 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                 <div class="card-header">
                     <span>Worker's List</span>
                 </div>
-                <div class=" card-body-list">
-                    <table>
+                <div class="card-body-list">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" class="form-control" id="search-worker" 
+                               placeholder="Search workers by name, department, email, or phone" 
+                               onkeyup="searchWorkers()">
+                    </div>
+                    
+                    <table id="workers-table">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -2267,5 +2408,33 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
         }
     } 
     ?>
+    
+    <script>
+        // Show notifications if any
+        <?php if (!empty($notification)): ?>
+            Swal.fire({
+                icon: '<?php echo $notification['type']; ?>',
+                title: '<?php echo ucfirst($notification['type']); ?>',
+                text: '<?php echo $notification['message']; ?>',
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000,
+                background: 'var(--card-bg)',
+                color: 'var(--text)'
+            });
+        <?php endif; ?>
+        
+        // Show login error if exists
+        <?php if (isset($login_error)): ?>
+            Swal.fire({
+                icon: 'error',
+                title: 'Login Failed',
+                text: '<?php echo $login_error; ?>',
+                background: 'var(--card-bg)',
+                color: 'var(--text)'
+            });
+        <?php endif; ?>
+    </script>
 </body>
 </html>
