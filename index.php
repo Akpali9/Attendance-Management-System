@@ -151,6 +151,9 @@ if (isset($_GET['attendance_year'])) {
     $selected_year = intval($_GET['attendance_year']);
 }
 
+// FIX: Define current month variable
+$current_month = date('Y-m');
+
 // Authentication functions
 function login($username, $password) {
     global $conn;
@@ -1858,7 +1861,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                         $current_month_attendance = $conn->query("SELECT COUNT(*) as count 
                                                          FROM attendance 
                                                          WHERE member_id = ".$worker_info['id']."
-                                                         AND DATE_FORMAT(attendance_date, '%m-%Y') = '$current_month'")->fetch_assoc()['count'];
+                                                         AND DATE_FORMAT(attendance_date, '%Y-%m') = '$current_month'")->fetch_assoc()['count'];
                         echo $current_month_attendance;
                         ?>
                     </div>
