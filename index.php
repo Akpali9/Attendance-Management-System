@@ -139,6 +139,18 @@ if (empty($_SESSION['csrf_token'])) {
 }
 $csrf_token = $_SESSION['csrf_token'];
 
+// NEW: Date selection variables
+$selected_day = date('Y-m-d');
+if (isset($_GET['attendance_day'])) {
+    $selected_day = $_GET['attendance_day'];
+}
+
+$current_year = date('Y');
+$selected_year = $current_year;
+if (isset($_GET['attendance_year'])) {
+    $selected_year = intval($_GET['attendance_year']);
+}
+
 // Authentication functions
 function login($username, $password) {
     global $conn;
@@ -470,8 +482,7 @@ if (is_superadmin()) {
     }
 }
 
-// Get attendance records for this month
-$current_month = date('Y-m');
+// NEW: Get attendance records for selected day
 $attendance = [];
 $result = $conn->query("SELECT a.*, m.fullname AS member_name, g.group_name, ad.fullname AS admin_name, 
                         DATE_FORMAT(a.attendance_time, '%h:%i %p') AS formatted_time 
@@ -479,8 +490,8 @@ $result = $conn->query("SELECT a.*, m.fullname AS member_name, g.group_name, ad.
                         JOIN members m ON a.member_id = m.id
                         JOIN class_groups g ON m.class_group_id = g.id
                         JOIN admins ad ON a.admin_id = ad.id
-                        WHERE DATE_FORMAT(a.attendance_date, '%Y-%m') = '$current_month'
-                        ORDER BY a.attendance_date DESC, a.attendance_time DESC");
+                        WHERE a.attendance_date = '$selected_day'
+                        ORDER BY a.attendance_time DESC");
 if ($result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
         $attendance[] = $row;
@@ -539,6 +550,8 @@ $total_groups = count($groups);
 $total_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance")->fetch_assoc()['count'];
 $today_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance WHERE attendance_date = CURDATE()")->fetch_assoc()['count'];
 $monthly_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance WHERE DATE_FORMAT(attendance_date, '%Y-%m') = '$current_month'")->fetch_assoc()['count'];
+// NEW: Yearly attendance calculation
+$yearly_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance WHERE YEAR(attendance_date) = $selected_year")->fetch_assoc()['count'];
 
 // Get the selected month for attendance calendar
 $calendar_month = isset($_GET['calendar_month']) ? $_GET['calendar_month'] : date('Y-m');
@@ -1475,6 +1488,30 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
             transform: translateY(-50%);
             color: var(--gray);
         }
+        
+        /* NEW: Date selector styles */
+        .date-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .date-selector label {
+            font-weight: bold;
+        }
+        
+        .year-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .year-selector label {
+            font-weight: bold;
+        }
 
         @media (max-width: 768px) {
             .header-content {
@@ -1596,8 +1633,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                         <div class="public-stat-label">Today's Attendance</div>
                     </div>
                     <div class="public-stat">
-                        <div class="public-stat-value"><?php echo $total_groups; ?></div>
-                        <div class="public-stat-label">Departments</div>
+                        <div class="public-stat-value"><?php echo $yearly_attendance; ?></div>
+                        <div class="public-stat-label"><?php echo date('Y'); ?> Attendance</div>
                     </div>
                 </div>
                 
@@ -1643,40 +1680,40 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                     </div>
                 </div>
                 
+                <!-- NEW: Date selector for public dashboard -->
                 <div class="public-card">
-                <div class="public-card-header">
-                        <i class="fas fa-history"></i> Recent Attendance Records
+                    <div class="public-card-header">
+                        <i class="fas fa-history"></i> Daily Attendance Records
                     </div>
-                <div class="public-card-body-list">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Time</th>
-                                <th>Member</th>
-                                <th>Department</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($attendance as $record): 
-                                $group_class = strtolower(str_replace(' ', '-', $record['group_name']));
-                            ?>
-                                <tr>
-                                    <td><?php echo $record['attendance_date']; ?></td>
-                                    <td><?php echo $record['formatted_time']; ?></td>
-                                    <td><?php echo $record['member_name']; ?></td>
-                                    <td><?php echo $record['group_name']; ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                            <?php if (empty($attendance)): ?>
-                                <tr>
-                                    <td colspan="5" style="text-align:center;">No attendance records found for this month</td>
-                                </tr>
+                    <div class="public-card-body">
+                        <form method="GET" class="date-selector">
+                            <input type="hidden" name="page" value="public">
+                            <label for="attendance_day">Select Date:</label>
+                            <input type="date" name="attendance_day" value="<?php echo $selected_day; ?>"
+                                   max="<?php echo date('Y-m-d'); ?>">
+                            <button type="submit" class="btn">Load</button>
+                        </form>
+                        
+                        <div class="attendance-list">
+                            <?php if (!empty($attendance)): ?>
+                                <?php foreach ($attendance as $record): ?>
+                                    <div class="attendance-record">
+                                        <div class="attendance-avatar" style="background: var(--primary);">
+                                            <?php echo substr($record['member_name'], 0, 1); ?>
+                                        </div>
+                                        <div class="attendance-info">
+                                            <div class="attendance-name"><?php echo $record['member_name']; ?></div>
+                                            <div class="attendance-group"><?php echo $record['group_name']; ?></div>
+                                        </div>
+                                        <div class="attendance-time"><?php echo $record['formatted_time']; ?></div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <p>No attendance records found for this date</p>
                             <?php endif; ?>
-                        </tbody>
-                    </table>
+                        </div>
+                    </div>
                 </div>
-            </div>
                 
                 <div class="text-center">
                     <a href="index.php" class="btn btn-outline">
@@ -1978,9 +2015,27 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                 </div>
                 
                 <div class="stat-card">
-                    <div class="stat-value"><?php echo $total_members - $today_attendance; ?></div>
-                    <div class="stat-label">Today Absent</div>
+                    <div class="stat-value"><?php echo $yearly_attendance; ?></div>
+                    <div class="stat-label"><?php echo $selected_year; ?> Total</div>
                 </div>
+            </div>
+            
+            <!-- NEW: Year selector for statistics -->
+            <div class="year-selector">
+                <form method="GET">
+                    <input type="hidden" name="page" value="dashboard">
+                    <label for="attendance_year">Select Year for Statistics:</label>
+                    <select name="attendance_year" id="attendance_year">
+                        <?php
+                        $current_year = date('Y');
+                        for ($year = $current_year; $year >= 2020; $year--) {
+                            $selected = ($year == $selected_year) ? 'selected' : '';
+                            echo "<option value='$year' $selected>$year</option>";
+                        }
+                        ?>
+                    </select>
+                    <button type="submit" class="btn">Update</button>
+                </form>
             </div>
             
             <div class="grid">
@@ -2066,7 +2121,51 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                 </div>
             </div>
             
+            <!-- NEW: Date selector for daily attendance -->
             <div class="card">
+                <div class="card-header">
+                    <span>Daily Attendance Records: <?php echo date('F j, Y', strtotime($selected_day)); ?></span>
+                </div>
+                <div class="card-body">
+                    <form method="GET" class="date-selector">
+                        <input type="hidden" name="page" value="dashboard">
+                        <label for="attendance_day">Select Date:</label>
+                        <input type="date" name="attendance_day" value="<?php echo $selected_day; ?>" 
+                               max="<?php echo date('Y-m-d'); ?>">
+                        <button type="submit" class="btn">Load</button>
+                    </form>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Member</th>
+                                <th>Department</th>
+                                <th>Marked By</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($attendance as $record): 
+                                $group_class = strtolower(str_replace(' ', '-', $record['group_name']));
+                            ?>
+                                <tr>
+                                    <td><?php echo $record['formatted_time']; ?></td>
+                                    <td><?php echo $record['member_name']; ?></td>
+                                    <td><span class="group-badge" style="background: var(--group-<?php echo $group_class; ?>);"><?php echo $record['group_name']; ?></span></td>
+                                    <td><?php echo $record['admin_name']; ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($attendance)): ?>
+                                <tr>
+                                    <td colspan="4" style="text-align:center;">No attendance records for this date</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card" id="attendance">
                 <div class="card-header">
                     <span>Attendance Calendar: <?php echo date('F Y', strtotime($calendar_month)); ?></span>
                 </div>
@@ -2141,43 +2240,6 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                         }
                         ?>
                     </div>
-                </div>
-            </div>
-            
-            <div class="card" id="attendance">
-                <div class="card-header">
-                    <span>Recent Attendance Records</span>
-                </div>
-                <div class="card-body-list">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Time</th>
-                                <th>Member</th>
-                                <th>Department</th>
-                                <th>Marked By</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($attendance as $record): 
-                                $group_class = strtolower(str_replace(' ', '-', $record['group_name']));
-                            ?>
-                                <tr>
-                                    <td><?php echo $record['attendance_date']; ?></td>
-                                    <td><?php echo $record['formatted_time']; ?></td>
-                                    <td><?php echo $record['member_name']; ?></td>
-                                    <td><span class="group-badge" style="background: var(--group-<?php echo $group_class; ?>);"><?php echo $record['group_name']; ?></span></td>
-                                    <td><?php echo $record['admin_name']; ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                            <?php if (empty($attendance)): ?>
-                                <tr>
-                                    <td colspan="5" style="text-align:center;">No attendance records found for this month</td>
-                                </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
                 </div>
             </div>
             
