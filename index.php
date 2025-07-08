@@ -342,24 +342,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_admin'])) {
         if (is_superadmin()) {
             $username = htmlspecialchars($_POST['username'], ENT_QUOTES, 'UTF-8');
-            $fullname = htmlspecialchars($_POST['fullname'], ENT_QUOTES, 'UTF-8');
-            $password = $_POST['password'];
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
             
-            $stmt = $conn->prepare("INSERT INTO admins (username, password, fullname) VALUES (?, ?, ?)");
-            $stmt->bind_param("sss", $username, $hashed_password, $fullname);
-            if ($stmt->execute()) {
-                $_SESSION['notification'] = [
-                    'type' => 'success',
-                    'message' => 'Admin added successfully!'
-                ];
-            } else {
+            // Check if username exists
+            $check_stmt = $conn->prepare("SELECT id FROM admins WHERE username = ?");
+            $check_stmt->bind_param("s", $username);
+            $check_stmt->execute();
+            $check_stmt->store_result();
+            
+            if ($check_stmt->num_rows > 0) {
                 $_SESSION['notification'] = [
                     'type' => 'error',
-                    'message' => 'Failed to add admin: ' . $conn->error
+                    'message' => 'Username already exists! Choose a different username.'
                 ];
+            } else {
+                $fullname = htmlspecialchars($_POST['fullname'], ENT_QUOTES, 'UTF-8');
+                $password = $_POST['password'];
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                
+                $stmt = $conn->prepare("INSERT INTO admins (username, password, fullname) VALUES (?, ?, ?)");
+                $stmt->bind_param("sss", $username, $hashed_password, $fullname);
+                if ($stmt->execute()) {
+                    $_SESSION['notification'] = [
+                        'type' => 'success',
+                        'message' => 'Admin added successfully!'
+                    ];
+                } else {
+                    $_SESSION['notification'] = [
+                        'type' => 'error',
+                        'message' => 'Failed to add admin: ' . $conn->error
+                    ];
+                }
+                $stmt->close();
             }
-            $stmt->close();
+            $check_stmt->close();
             header("Location: index.php?page=dashboard#admins");
             exit();
         }
@@ -552,8 +567,11 @@ $total_members = count($members);
 $total_groups = count($groups);
 $total_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance")->fetch_assoc()['count'];
 $today_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance WHERE attendance_date = CURDATE()")->fetch_assoc()['count'];
-$monthly_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance WHERE DATE_FORMAT(attendance_date, '%Y-%m') = '$current_month'")->fetch_assoc()['count'];
-// NEW: Yearly attendance calculation
+
+// NEW: Calculate absent workers for today
+$today_absent = $total_members - $today_attendance;
+
+// Yearly attendance calculation
 $yearly_attendance = $conn->query("SELECT COUNT(*) as count FROM attendance WHERE YEAR(attendance_date) = $selected_year")->fetch_assoc()['count'];
 
 // Get the selected month for attendance calendar
@@ -597,6 +615,14 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
     
     fclose($output);
     exit();
+}
+
+// Get usernames for client-side validation
+$admin_usernames = [];
+if (is_superadmin()) {
+    foreach ($admins as $admin) {
+        $admin_usernames[] = $admin['username'];
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -1516,6 +1542,14 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
             font-weight: bold;
         }
 
+        /* Username feedback */
+        .username-feedback {
+            display: none;
+            color: var(--warning);
+            margin-top: 5px;
+            font-size: 0.85rem;
+        }
+
         @media (max-width: 768px) {
             .header-content {
                 flex-direction: column;
@@ -1592,6 +1626,38 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                 tr[i].style.display = found ? '' : 'none';
             }
         }
+        
+        // Client-side username check
+        function checkUsernameAvailability() {
+            const username = document.getElementById('username').value;
+            const feedback = document.getElementById('username-feedback');
+            const takenUsernames = [<?php 
+                foreach($admin_usernames as $uname) echo "'" . addslashes($uname) . "',"; 
+            ?>];
+            
+            if (takenUsernames.includes(username)) {
+                feedback.style.display = 'block';
+                return false;
+            } else {
+                feedback.style.display = 'none';
+                return true;
+            }
+        }
+        
+        // Form validation
+        function validateAdminForm() {
+            if (!checkUsernameAvailability()) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Username Taken',
+                    text: 'This username is already in use. Please choose another.',
+                    background: 'var(--card-bg)',
+                    color: 'var(--text)'
+                });
+                return false;
+            }
+            return true;
+        }
     </script>
 </head>
 <body>
@@ -1627,9 +1693,10 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                         <div class="public-stat-value"><?php echo $total_members; ?></div>
                         <div class="public-stat-label">Total Members</div>
                     </div>
+                    <!-- CHANGED: Absent Today -->
                     <div class="public-stat">
-                        <div class="public-stat-value"><?php echo $total_attendance; ?></div>
-                        <div class="public-stat-label">Attendance Records</div>
+                        <div class="public-stat-value"><?php echo $today_absent; ?></div>
+                        <div class="public-stat-label">Absent Today</div>
                     </div>
                     <div class="public-stat">
                         <div class="public-stat-value"><?php echo $today_attendance; ?></div>
@@ -2007,9 +2074,10 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                     <div class="stat-label">Total Workers</div>
                 </div>
                 
+                <!-- CHANGED: Absent Today -->
                 <div class="stat-card">
-                    <div class="stat-value"><?php echo $monthly_attendance; ?></div>
-                    <div class="stat-label">This Month</div>
+                    <div class="stat-value"><?php echo $today_absent; ?></div>
+                    <div class="stat-label">Absent Today</div>
                 </div>
                 
                 <div class="stat-card">
@@ -2129,7 +2197,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                 <div class="card-header">
                     <span>Daily Attendance Records: <?php echo date('F j, Y', strtotime($selected_day)); ?></span>
                 </div>
-                <div class="card-body">
+                <div class="card-body-list">
                     <form method="GET" class="date-selector">
                         <input type="hidden" name="page" value="dashboard">
                         <label for="attendance_day">Select Date:</label>
@@ -2379,25 +2447,29 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                                 <span>Add New Admin</span>
                             </div>
                             <div class="card-body">
-                                <form method="POST">
+                                <form method="POST" onsubmit="return validateAdminForm()">
                                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                                        <div class="form-group">
-                                <label for="username">Username</label>
-                                <input type="text" class="form-control" name="username" id="username" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="fullname">Full Name</label>
-                                <input type="text" class="form-control" name="fullname" id="fullname" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="password">Password</label>
-                                <input type="password" class="form-control" name="password" id="password" required>
-                            </div>
-                        <button type="submit" name="add_admin" class="btn btn-superadmin">
-                            <i class="fas fa-user-shield"></i> Add Administrator
-                        </button>
+                                    <div class="form-group">
+                                        <label for="username">Username</label>
+                                        <input type="text" class="form-control" name="username" id="username" 
+                                               required oninput="checkUsernameAvailability()">
+                                        <div class="username-feedback" id="username-feedback">
+                                            Username already taken!
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="fullname">Full Name</label>
+                                        <input type="text" class="form-control" name="fullname" id="fullname" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="password">Password</label>
+                                        <input type="password" class="form-control" name="password" id="password" required>
+                                    </div>
+                                    <button type="submit" name="add_admin" class="btn">
+                                        <i class="fas fa-user-shield"></i> Add Administrator
+                                    </button>
                                 </form>
                             </div>
                         </div>
@@ -2500,6 +2572,11 @@ if (isset($_GET['export']) && $_GET['export'] == 'csv') {
                 color: 'var(--text)'
             });
         <?php endif; ?>
+        
+        // Initialize username check on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkUsernameAvailability();
+        });
     </script>
 </body>
 </html>
