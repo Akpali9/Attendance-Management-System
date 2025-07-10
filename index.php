@@ -630,12 +630,14 @@ if (is_superadmin()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:;">
+    <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
-    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-Frame-Options" content="DENY"> -->
     <title>Love Ambassador Attendance</title>
     <link rel="icon" href="./img/lam-logo.jpg">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" 
+      integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" 
+      crossorigin="anonymous" referrerpolicy="no-referrer">
     <link href="https://cdn.jsdelivr.net/npm/@sweetalert2/theme-<?php echo $theme; ?>" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
@@ -651,7 +653,7 @@ if (is_superadmin()) {
             --gray: #6c757d;
             --light-gray: #e9ecef;
             --card-bg: #ffffff;
-            --body-bg: #f0f2f5;
+            --body-bg:rgb(7, 7, 8);
             --text: #333333;
             --header-bg: linear-gradient(135deg, var(--primary), var(--primary-dark));
             --group-dev: #4cc9f0;
@@ -1582,6 +1584,25 @@ if (is_superadmin()) {
         }
     </style>
     <script>
+       
+function confirmDelete(memberId, memberName) {
+    Swal.fire({
+        title: 'Delete Worker?',
+        html: `Are you sure you want to permanently delete <b>${memberName}</b> and all their attendance records?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, delete!',
+        background: 'var(--card-bg)',
+        color: 'var(--text)'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const form = document.getElementById('delete-form-' + memberId);
+            form.submit();
+        }
+    });
+}
         // Function to filter members by group
         function filterMembers() {
             const groupId = document.getElementById('group_filter').value;
@@ -2347,15 +2368,17 @@ if (is_superadmin()) {
                                     <td><span class="group-badge" style="background: var(--group-<?php echo $group_class; ?>);"><?php echo $member['group_name']; ?></span></td>
                                     <td><?php echo $member['email'] ? $member['email'] : 'N/A'; ?></td>
                                     <td><?php echo $member['phone'] ? $member['phone'] : 'N/A'; ?></td>
+                                   
                                     <td>
                                         <a href="?view_worker_attendance=1&worker_id=<?php echo $member['id']; ?>" 
-                                           class="btn" style="margin-right:5px; margin-bottom: 15px;">
-                                          View Attendance
+                                        class="btn" style="margin-right:5px; margin-bottom: 15px;">
+                                        View Attendance
                                         </a>
-                                        <form method="POST" style="display:inline;">
+                                        <form method="POST" id="delete-form-<?php echo $member['id']; ?>" style="display:inline;">
                                             <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                                             <input type="hidden" name="member_id" value="<?php echo $member['id']; ?>">
-                                            <button type="submit" name="delete_member" class="action-btn btn-danger">
+                                            <button type="button" onclick="confirmDelete(<?php echo $member['id']; ?>, '<?php echo addslashes($member['fullname']); ?>')" 
+                                                    class="action-btn btn-danger">
                                                 <i class="fas fa-trash-alt"></i> Delete
                                             </button>
                                         </form>
