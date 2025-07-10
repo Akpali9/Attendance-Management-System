@@ -318,17 +318,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("INSERT INTO attendance (member_id, admin_id, attendance_date, attendance_time) VALUES (?, ?, ?, ?)");
             $stmt->bind_param("iiss", $member_id, $admin_id, $date, $time);
             if ($stmt->execute()) {
-                $_SESSION['notification'] = [
-                    'type' => 'success',
-                    'message' => 'Attendance marked successfully!'
-                ];
-            } else {
-                $_SESSION['notification'] = [
-                    'type' => 'error',
-                    'message' => 'Failed to mark attendance: ' . $conn->error
-                ];
-            }
-            $stmt->close();
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Attendance marked successfully!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'error',
+                'message' => 'Failed to mark attendance: ' . $conn->error
+            ];
+        }
+        $stmt->close();
         } else {
             $_SESSION['notification'] = [
                 'type' => 'warning',
@@ -1584,25 +1584,6 @@ if (is_superadmin()) {
         }
     </style>
     <script>
-       
-function confirmDelete(memberId, memberName) {
-    Swal.fire({
-        title: 'Delete Worker?',
-        html: `Are you sure you want to permanently delete <b>${memberName}</b> and all their attendance records?`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, delete!',
-        background: 'var(--card-bg)',
-        color: 'var(--text)'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            const form = document.getElementById('delete-form-' + memberId);
-            form.submit();
-        }
-    });
-}
         // Function to filter members by group
         function filterMembers() {
             const groupId = document.getElementById('group_filter').value;
@@ -1678,6 +1659,26 @@ function confirmDelete(memberId, memberName) {
                 return false;
             }
             return true;
+        }
+        
+        // Worker deletion confirmation
+        function confirmDelete(memberId, memberName) {
+            Swal.fire({
+                title: 'Delete Worker?',
+                html: `Are you sure you want to permanently delete <b>${memberName}</b> and all their attendance records?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete!',
+                background: 'var(--card-bg)',
+                color: 'var(--text)'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const form = document.getElementById('delete-form-' + memberId);
+                    form.submit();
+                }
+            });
         }
     </script>
 </head>
@@ -2377,9 +2378,9 @@ function confirmDelete(memberId, memberName) {
                                         <form method="POST" id="delete-form-<?php echo $member['id']; ?>" style="display:inline;">
                                             <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                                             <input type="hidden" name="member_id" value="<?php echo $member['id']; ?>">
-                                            <button type="button" onclick="confirmDelete(<?php echo $member['id']; ?>, '<?php echo addslashes($member['fullname']); ?>')" 
-                                                    class="action-btn btn-danger">
-                                                <i class="fas fa-trash-alt"></i> Delete
+                                          <button type="button" onclick="confirmDelete(<?php echo $member['id']; ?>, <?php echo json_encode($member['fullname']); ?>)" 
+                                                class="action-btn btn-danger">
+                                                <i class="fa-solid fa-trash-alt"></i> Delete
                                             </button>
                                         </form>
                                     </td>
