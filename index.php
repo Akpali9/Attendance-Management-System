@@ -9,7 +9,6 @@ ini_set('session.use_strict_mode', 1);
 ini_set('session.cookie_lifetime', 0); // Session cookie expires when browser closes
 
 session_start();
-
 // Initialize theme
 $theme = isset($_SESSION['theme']) ? $_SESSION['theme'] : 'light';
 
