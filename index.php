@@ -1,5 +1,6 @@
 <?php
 // Security enhancements - must be set BEFORE session_start()
+
 $is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
              (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
 ini_set('session.cookie_httponly', 1);
