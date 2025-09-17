@@ -641,7 +641,7 @@ if ($selected_event_id) {
                             </div>
                             
                             <div class="form-group">
-                                <label for="member">Member? *</label>
+                                <label for="member">Are you a Member? *</label>
                                 <select id="member" name="member" required>
                                     <option value="">Select an option</option>
                                     <option value="Yes">Yes</option>
