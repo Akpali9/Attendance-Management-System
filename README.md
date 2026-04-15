@@ -1,4 +1,4 @@
-**How to Use
+How to Use
 
     Save this code as index.php in your web server directory.
 
@@ -12,7 +12,7 @@
 
     Mark attendance with fingerprint by clicking the fingerprint button on the dashboard.
 
-###Requirements
+Requirements
 
     PHP 7.4+ with mysqli, openssl, json, random extensions.
 
@@ -20,7 +20,7 @@
 
     A device with a fingerprint sensor or Windows Hello / Touch ID.
 
-###Notes
+Notes
 
     The WebAuthn implementation includes a minimal CBOR decoder for educational purposes. For production, consider using web-auth/webauthn-lib via Composer for full security.
 
