@@ -1,59 +1,29 @@
-Attendance Management System is a PHP/MySQL web application designed for organizations to efficiently track member attendance organized by class groups. The system features role-based access, class group management, and both admin and public interfaces.
-Key Features
-Admin Functionality
+###How to Use
 
-    Superadmin: Full control to add/delete other admins
+    Save this code as index.php in your web server directory.
 
-    Regular Admins: Manage members and attendance records
+    Create the img/ folder with logo.png, lam-logo.jpg, reg.jpg, excel.jpg (or adjust paths).
 
-    Member Management: Add/delete members with group assignment
+    Database will be created automatically when you first run the script.
 
-    Attendance Tracking: Mark attendance with automatic date/time stamping
+    Login with username superadmin and password admin123.
 
-    Group Management: Create and delete class groups
+    Enroll fingerprints for workers by clicking the "Enroll Fingerprint" button next to each worker.
 
-Public Access
+    Mark attendance with fingerprint by clicking the fingerprint button on the dashboard.
 
-    View all class groups with member counts
+###Requirements
 
-    See recent attendance records
+    PHP 7.4+ with mysqli, openssl, json, random extensions.
 
-    Access without login requirement
+    HTTPS (required for WebAuthn; localhost works without HTTPS).
 
-Technical Implementation
+    A device with a fingerprint sensor or Windows Hello / Touch ID.
 
-    Single PHP file for easy deployment
+###Notes
 
-    MySQL database backend
+    The WebAuthn implementation includes a minimal CBOR decoder for educational purposes. For production, consider using web-auth/webauthn-lib via Composer for full security.
 
-    Responsive design for all devices
+    Fingerprint credentials are stored as public keys; signature verification is simplified (in production, verify the signature using the public key).
 
-    Color-coded groups for intuitive organization
-
-    Dashboard with real-time statistics
-
-System Preview
-Diagram
-Code
-Diagram
-Code
-Mermaid rendering failed.
-Getting Started
-
-    Deployment:
-
-        Run on XAMPP/WAMP with MySQL
-
-        Single PHP file for easy setup
-
-    Default Credentials:
-
-        Superadmin: superadmin / admin123
-
-    Access:
-
-        Admin dashboard: index.php
-
-        Public page: index.php?page=public
-
-This system provides organizations with a comprehensive solution for attendance tracking with visual group organization and role-based access control.
+    All existing features (manual attendance, department management, etc.) remain functional.
