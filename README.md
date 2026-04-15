@@ -1,4 +1,4 @@
-###How to Use
+**How to Use
 
     Save this code as index.php in your web server directory.
 
