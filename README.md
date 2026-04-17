@@ -20,7 +20,7 @@
 
     A device with a fingerprint sensor or Windows Hello / Touch ID.
 
-Notes
+## Notes
 
     The WebAuthn implementation includes a minimal CBOR decoder for educational purposes. For production, consider using web-auth/webauthn-lib via Composer for full security.
 
