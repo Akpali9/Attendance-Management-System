@@ -12,7 +12,7 @@
 
     Mark attendance with fingerprint by clicking the fingerprint button on the dashboard.
 
-Requirements
+## Requirements
 
     PHP 7.4+ with mysqli, openssl, json, random extensions.
 
