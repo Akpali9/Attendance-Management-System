@@ -14,6 +14,7 @@
 
 ## Requirements
 
+
     PHP 7.4+ with mysqli, openssl, json, random extensions.
 
     HTTPS (required for WebAuthn; localhost works without HTTPS).
